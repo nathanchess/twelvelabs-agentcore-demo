@@ -1,0 +1,90 @@
+Traceback (most recent call last):
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\agent.py", line 89, in <module>
+    result = agent(prompt)
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\strands\agent\agent.py", line 427, in __call__
+    return run_async(
+        lambda: self.invoke_async(
+            prompt, invocation_state=invocation_state, structured_output_model=structured_output_model, **kwargs
+        )
+    )
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\strands\_async.py", line 31, in run_async
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "C:\Program Files\Python313\Lib\concurrent\futures\_base.py", line 456, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Program Files\Python313\Lib\concurrent\futures\_base.py", line 401, in __get_result
+    raise self._exception
+  File "C:\Program Files\Python313\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\opentelemetry\instrumentation\threading\__init__.py", line 171, in wrapped_func
+    return original_func(*func_args, **func_kwargs)
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\strands\_async.py", line 27, in execute
+    return asyncio.run(execute_async())
+           ~~~~~~~~~~~^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python313\Lib\asyncio\runners.py", line 194, in run
+    return runner.run(main)
+           ~~~~~~~~~~^^^^^^
+  File "C:\Program Files\Python313\Lib\asyncio\runners.py", line 118, in run
+    return self._loop.run_until_complete(task)
+           ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^
+  File "C:\Program Files\Python313\Lib\asyncio\base_events.py", line 720, in run_until_complete
+    return future.result()
+           ~~~~~~~~~~~~~^^
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\strands\_async.py", line 24, in execute_async
+    return await async_func()
+           ^^^^^^^^^^^^^^^^^^
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\strands\agent\agent.py", line 470, in invoke_async
+    async for event in events:
+        _ = event
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\strands\agent\agent.py", line 666, in stream_async
+    async for event in events:
+    ...<5 lines>...
+            yield as_dict
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\strands\agent\agent.py", line 746, in _run_loop
+    async for event in events:
+    ...<13 lines>...
+        yield event
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\strands\agent\agent.py", line 794, in _execute_event_loop_cycle
+    async for event in events:
+        yield event
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\strands\event_loop\event_loop.py", line 152, in event_loop_cycle
+    async for model_event in model_events:
+        if not isinstance(model_event, ModelStopReason):
+            yield model_event
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\strands\event_loop\event_loop.py", line 391, in _handle_model_execution     
+    raise e
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\strands\event_loop\event_loop.py", line 337, in _handle_model_execution     
+    async for event in stream_messages(
+    ...<2 lines>...
+        yield event
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\strands\event_loop\streaming.py", line 441, in stream_messages
+    async for event in process_stream(chunks, start_time):
+        yield event
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\strands\event_loop\streaming.py", line 388, in process_stream
+    async for chunk in chunks:
+    ...<22 lines>...
+            handle_redact_content(chunk["redactContent"], state)
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\strands\models\bedrock.py", line 633, in stream
+    await task
+  File "C:\Program Files\Python313\Lib\asyncio\threads.py", line 25, in to_thread
+    return await loop.run_in_executor(None, func_call)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Program Files\Python313\Lib\concurrent\futures\thread.py", line 59, in run
+    result = self.fn(*self.args, **self.kwargs)
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\opentelemetry\instrumentation\threading\__init__.py", line 171, in wrapped_func
+    return original_func(*func_args, **func_kwargs)
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\strands\models\bedrock.py", line 754, in _stream
+    raise e
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\strands\models\bedrock.py", line 669, in _stream
+    response = self.client.converse_stream(**request)
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\botocore\client.py", line 602, in _api_call
+    return self._make_api_call(operation_name, kwargs)
+           ~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\botocore\context.py", line 123, in wrapper
+    return func(*args, **kwargs)
+  File "C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands\venv\Lib\site-packages\botocore\client.py", line 1078, in _make_api_call
+    raise error_class(parsed_response, operation_name)
+botocore.errorfactory.ValidationException: An error occurred (ValidationException) when calling the ConverseStream operation: The model returned the following errors: tools.1.custom.input_schema: input_schema does not support oneOf, allOf, or anyOf at the top level
+└ Bedrock region: us-east-1
+└ Model id: us.anthropic.claude-sonnet-4-20250514-v1:0
