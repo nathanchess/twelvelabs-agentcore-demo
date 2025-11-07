@@ -1,16 +1,17 @@
+import json
 import os
-
 from dotenv import load_dotenv
-from bedrock_agentcore.runtime import BedrockAgentCoreApp
-from strands import Agent, tool
-from strands_tools import file_read, use_aws, slack 
-from twelvelabs import TwelveLabs
-from twelvelabs.indexes import IndexesCreateRequestModelsItem
-
-from tools import chat_video
 
 # Temporary ENV VARS for testing
 load_dotenv()
+
+from bedrock_agentcore.runtime import BedrockAgentCoreApp
+from strands import Agent, tool
+from strands_tools import file_read, use_aws, slack, environment 
+from twelvelabs import TwelveLabs
+from twelvelabs.indexes import IndexesCreateRequestModelsItem
+
+from custom_tools import chat_video, search_video
 
 WINDOWS_USERNAME = "natha"
 ZOOM_DOWNLOAD_PATH = f"C:\\Users\\{WINDOWS_USERNAME}\\Documents\\Zoom"
@@ -49,7 +50,8 @@ def get_index() -> str:
     # NOTE: Could possibly be integrated into official Strands tooling... No need for developers to manually navigate to TwelveLabs playground to create index.
 
     """
-    Creates TwelveLabs index with the name strands-agent. Validates if exists, if not creates it.
+    Creates TwelveLabs index with the name strands-agent. Validates if exists, if not creates it and sets environment variable for TWELVELABS_MARENGO_INDEX_ID and TWELVELABS_PEGASUS_INDEX_ID.
+    Should be used to validate indexes before any TwelveLabs tools are called.
 
     Returns:
         str: Confirmation message about index creation or existence.
@@ -66,7 +68,7 @@ def get_index() -> str:
             os.environ['TWELVELABS_MARENGO_INDEX_ID'] = index.id
             os.environ['TWELVELABS_PEGASUS_INDEX_ID'] = index.id
 
-            return "Index already exists with index_id: " + index.id
+            return "Index already exists with index_id: " + index.id + ". Environment variables are now set for both indexes."
         
     try:
 
@@ -78,19 +80,53 @@ def get_index() -> str:
         os.environ['TWELVELABS_MARENGO_INDEX_ID'] = index.id
         os.environ['TWELVELABS_PEGASUS_INDEX_ID'] = index.id
 
-        return "Index created successfully with index_id: " + index.id
+        return "Index created successfully with index_id: " + index.id + ". Environment variables are now set for both indexes."
     
     except Exception as e:
 
         print(f"Error creating index: {e}")
 
         return "Failed to create index."
+    
+@tool
+def get_slack_channel_ids() -> dict | str:
+    
+    """
+    
+    Fetches all available Slack channels using SLACK_BOT_TOKEN and SLACK_APP_TOKEN environment variables.
+    Organizes Slack channels and returns data in the form of dictionary with ID and metadata about the channel.
+    Should be used to help identify the correct ID to pass in to send Slack message tool.
 
-if __name__ == "__main__":
+    If JSON structure returned is not proper, will return string that should be parsed to learn about channel metadata.
+
+    """
+
+    if not os.getenv("SLACK_BOT_TOKEN") or not os.getenv("SLACK_APP_TOKEN"):
+        raise Exception("SLACK_BOT_TOKEN and SLACK_APP_TOKEN must be set in environment variables")
+    
+    agent = Agent(
+        tools=[slack]
+    )
+    
+    result = agent.tool.slack(
+        "conversations_list"
+    )
+
+    try:
+
+        result_json = json.loads(result)
+
+        return result_json
+
+    except:
+
+        return result
+
+def main():
 
     app = BedrockAgentCoreApp()
     agent = Agent(
-        tools=[file_read, chat_video, use_aws, find_file_from_folder, get_index],
+        tools=[file_read, chat_video, use_aws, find_file_from_folder, get_index, environment, slack, get_slack_channel_ids],
     )
 
     video_name = str(input())
@@ -99,4 +135,15 @@ if __name__ == "__main__":
     prompt = "Please process the video file " + video_formatted + " located in the Zoom folder " + ZOOM_DOWNLOAD_PATH + " into the TwelveLabs index named " + os.getenv('TWELVELABS_MARENGO_INDEX_ID') + "."
 
     result = agent(prompt)
+
     
+
+if __name__ == "__main__":
+
+    agent = Agent(
+        tools=[slack, get_slack_channel_ids]
+    )
+
+    result = agent("Please post message with content " + "\"Should be fixed...!\" into private direct message with user Eric Johnson.")
+
+    print(result)
