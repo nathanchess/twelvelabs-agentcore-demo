@@ -6,11 +6,12 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import ffmpeg from 'fluent-ffmpeg';
+import crypto from 'crypto';
 
-const sessionTempDir = path.join(app.getPath('temp'), 'zoom-thumbnailer-sessions');
+const sessionTempDir = path.join(app.getPath('temp'), 'tl-video-agent-session');
+const videoMapPath = path.join(sessionTempDir, 'video-map.json');
 
 function createWindow() {
-  // Create the browser window.
   const mainWindow = new BrowserWindow({
     width: 900,
     height: 670,
@@ -39,10 +40,25 @@ function createWindow() {
   }
 }
 
+function _generateVideoFileHash(filePath) {
+  const videoFileStream = fs.createReadStream(filePath);
+  const videoHash = crypto.createHash('sha256');
+
+  return new Promise((resolve, reject) => {
+    videoFileStream.on('data', (chunk) => videoHash.update(chunk));
+    videoFileStream.on('end', () => { resolve(videoHash.digest('hex')) });
+    videoFileStream.on('error', (err) => reject(err));
+  });
+}
+
 app.whenReady().then(() => {
 
   if (!fs.existsSync(sessionTempDir)){
     fs.mkdirSync(sessionTempDir, { recursive: true });
+  }
+
+  if (!fs.existsSync(videoMapPath)) {
+    fs.writeFileSync(videoMapPath, '{}');
   }
 
   electronApp.setAppUserModelId('com.electron')
@@ -53,9 +69,28 @@ app.whenReady().then(() => {
 
   createWindow()
 
-  ipcMain.handle('fetch-thumbnail', async (event, filepath, output_dir = sessionTempDir) => {
+  ipcMain.handle('video-is-indexed', async (event, filepath) => {
+    const hash = await _generateVideoFileHash(filepath);
+    const videoMap = JSON.parse(fs.readFileSync(videoMapPath, 'utf8'));
+    if (videoMap[hash]) {
+      return {
+        success: true,
+        content: videoMap[hash]
+      }
+    }
+    return {
+      success: true,
+      content: null
+    }
+  }) 
 
-    console.log("fetch-thumbnail handler called...")
+  ipcMain.handle('index-video', async (event, filepath) => {
+
+   
+    
+  })
+
+  ipcMain.handle('fetch-thumbnail', async (event, filepath, output_dir = sessionTempDir) => {
   
     try {
   
@@ -160,9 +195,10 @@ app.on('will-quit', () => {
     if (fs.existsSync(sessionTempDir)) {
       const thumbnailFiles = fs.readdirSync(sessionTempDir);
       for (const thumbnailFile of thumbnailFiles) {
-        fs.unlinkSync(path.join(sessionTempDir, thumbnailFile));
+        if (thumbnailFile.endsWith('.png')) {
+          fs.unlinkSync(path.join(sessionTempDir, thumbnailFile));
+        }
       }
-      fs.rmSync(sessionTempDir, { recursive: true });
     } 
   } catch (error) {
     console.error('Error cleaning up session temp dir:', error);

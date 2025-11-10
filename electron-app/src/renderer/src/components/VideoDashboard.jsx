@@ -6,21 +6,32 @@ export default function VideoDashboard({ videoMetadata }) {
         ? videoMetadata 
         : Object.values(videoMetadata || {})
 
+    const handleVideoHover = (isHovering, video) => {
+        // This will be used later for video playback
+        if (isHovering) {
+            console.log('Hovering over video:', video.name)
+            // Future: Start video playback here
+        } else {
+            console.log('Stopped hovering over video:', video.name)
+            // Future: Pause video playback here
+        }
+    }
+
     return (
-        <div className="w-full p-4" style={{ width: '100%' }}>
-            <h2 className="text-2xl font-bold mb-4">Video Dashboard</h2>
-            <div 
-                className="flex flex-row flex-nowrap gap-4 overflow-x-auto" 
-                style={{ 
-                    display: 'flex', 
-                    flexDirection: 'row', 
-                    flexWrap: 'nowrap',
-                    width: '100%',
-                    overflowX: 'auto'
-                }}
-            >
+        <div className="video-dashboard">
+            <div className="video-dashboard-header">
+                <h1 className="video-dashboard-title">Your Zoom Recordings</h1>
+                <p className="video-dashboard-subtitle">Bring your local video archive to advanced TwelveLabs video intelligence and AWS Strands Agent</p>
+            </div>
+            <div className="video-dashboard-grid">
                 {videosArray.map((video, index) => (
-                    <VideoCard key={video.id || index} thumbnail={video.thumbnail} title={video.name} date={video.date} />
+                    <VideoCard 
+                        key={video.id || index} 
+                        thumbnail={video.thumbnail} 
+                        title={video.name} 
+                        date={video.date}
+                        onHover={(isHovering) => handleVideoHover(isHovering, video)}
+                    />
                 ))}
             </div>
         </div>

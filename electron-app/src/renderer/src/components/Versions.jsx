@@ -4,11 +4,13 @@ function Versions() {
   const [versions] = useState(window.electron.process.versions)
 
   return (
-    <ul className="versions">
-      <li className="electron-version">Electron v{versions.electron}</li>
-      <li className="chrome-version">Chromium v{versions.chrome}</li>
-      <li className="node-version">Node v{versions.node}</li>
-    </ul>
+    <div className="versions">
+      <span className="versions-label">Electron v{versions.electron}</span>
+      <span className="versions-separator">•</span>
+      <span className="versions-label">Chromium v{versions.chrome}</span>
+      <span className="versions-separator">•</span>
+      <span className="versions-label">Node v{versions.node}</span>
+    </div>
   )
 }
 

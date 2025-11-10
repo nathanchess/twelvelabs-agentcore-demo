@@ -9,6 +9,7 @@ body {
   user-select: none;
   width: 100%;
   height: 100vh;
+  background-color: #1a1a1a;
 }
 
 code {
@@ -34,6 +35,21 @@ code {
   flex-direction: column;
   width: 100%;
   min-height: 100vh;
+}
+
+/* App Container Layout */
+.app-container {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+  background-color: #1a1a1a;
+}
+
+.app-main-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow-x: hidden;
 }
 
 .logo {
@@ -119,31 +135,32 @@ code {
 }
 
 .versions {
-  position: absolute;
-  bottom: 30px;
-  margin: 0 auto;
-  padding: 15px 0;
-  font-family: 'Menlo', 'Lucida Console', monospace;
-  display: inline-flex;
-  overflow: hidden;
+  position: fixed;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
   align-items: center;
-  border-radius: 22px;
-  background-color: #ffffff;
-  backdrop-filter: blur(24px);
+  gap: 8px;
+  padding: 8px 12px;
+  font-family: 'Menlo', 'Lucida Console', monospace;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.4);
+  background-color: rgba(31, 31, 31, 0.8);
+  border-radius: 6px;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  z-index: 100;
 }
 
-.versions li {
-  display: block;
-  float: left;
-  border-right: 1px solid rgba(0, 0, 0, 0.2);
-  padding: 0 20px;
-  font-size: 14px;
-  line-height: 14px;
-  opacity: 0.8;
-  color: var(--ev-c-black);
-  &:last-child {
-    border: none;
-  }
+.versions-label {
+  font-size: 11px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.versions-separator {
+  color: rgba(255, 255, 255, 0.2);
+  font-size: 10px;
 }
 
 @media (max-width: 720px) {
@@ -162,5 +179,250 @@ code {
   .tip,
   .actions {
     display: none;
+  }
+}
+
+/* Video Dashboard Styles - Zoom-like Interface */
+.video-dashboard {
+  width: 100%;
+  min-height: 100vh;
+  background-color: transparent;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start;
+}
+
+.video-dashboard-header {
+  width: 100%;
+  max-width: 1400px;
+  margin-bottom: 32px;
+}
+
+.video-dashboard-title {
+  font-size: 32px;
+  font-weight: 700;
+  color: #ffffff;
+  margin: 0 0 12px 0;
+  line-height: 1.2;
+}
+
+.video-dashboard-subtitle {
+  font-size: 16px;
+  color: rgba(255, 255, 255, 0.5);
+  margin: 0;
+  line-height: 1.5;
+  font-weight: 400;
+}
+
+.video-dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 16px;
+  width: 100%;
+  max-width: 1400px;
+}
+
+/* Video Card Styles */
+.video-card {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+  border: 3px solid transparent;
+  background-color: #2a2a2a;
+}
+
+.video-card:hover {
+  transform: translateY(-2px);
+  border-color: #00ff88;
+  box-shadow: 0 4px 20px rgba(0, 255, 136, 0.4);
+}
+
+.video-card:active,
+.video-card-pressed {
+  transform: translateY(0px) scale(0.98);
+  box-shadow: 0 2px 10px rgba(0, 255, 136, 0.2);
+}
+
+.video-card-image-wrapper {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  border-radius: 10px;
+}
+
+.video-card-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.3s ease, opacity 0.3s ease;
+  border-radius: 10px;
+}
+
+.video-card:hover .video-card-image {
+  transform: scale(1.05);
+}
+
+.video-card-image-hover {
+  opacity: 0.9;
+}
+
+.video-card-overlay {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.8) 0%, rgba(0, 0, 0, 0.4) 50%, transparent 100%);
+  padding: 12px 16px;
+  border-radius: 0 0 10px 10px;
+  pointer-events: none;
+}
+
+.video-card-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.video-card-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: #ffffff;
+  margin: 0;
+  text-overflow: ellipsis;
+  overflow: hidden;
+  white-space: nowrap;
+  line-height: 1.4;
+}
+
+.video-card-date {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+  line-height: 1.3;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .video-dashboard-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 12px;
+  }
+  
+  .video-dashboard {
+    padding: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .video-dashboard-grid {
+    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    gap: 8px;
+  }
+}
+
+/* Sidebar Styles */
+.sidebar {
+  width: 240px;
+  min-height: 100vh;
+  background-color: #1f1f1f;
+  border-right: 1px solid rgba(255, 255, 255, 0.1);
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+}
+
+.sidebar-nav {
+  display: flex;
+  flex-direction: column;
+  padding: 24px 16px;
+  gap: 8px;
+}
+
+.sidebar-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 16px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 15px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sidebar-item:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #ffffff;
+}
+
+.sidebar-item-active {
+  background-color: rgba(0, 255, 136, 0.1);
+  color: #00ff88;
+  border-left: 3px solid #00ff88;
+}
+
+.sidebar-item-active:hover {
+  background-color: rgba(0, 255, 136, 0.15);
+  color: #00ff88;
+}
+
+.sidebar-icon {
+  font-size: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  transition: transform 0.2s ease;
+  color: inherit;
+  flex-shrink: 0;
+}
+
+.sidebar-icon svg {
+  width: 100%;
+  height: 100%;
+  color: inherit;
+}
+
+.sidebar-item:hover .sidebar-icon {
+  transform: scale(1.1);
+}
+
+.sidebar-label {
+  transition: font-size 0.2s ease;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.sidebar-item:hover .sidebar-label {
+  font-size: 15.5px;
+}
+
+/* Responsive sidebar */
+@media (max-width: 768px) {
+  .sidebar {
+    width: 200px;
+  }
+  
+  .sidebar-item {
+    padding: 10px 12px;
+    font-size: 14px;
+  }
+  
+  .sidebar-icon {
+    font-size: 18px;
+    width: 20px;
+    height: 20px;
   }
 }
