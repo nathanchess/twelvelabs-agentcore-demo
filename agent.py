@@ -122,28 +122,33 @@ def get_slack_channel_ids() -> dict | str:
 
         return result
 
-def main():
+def _upload_file_to_twelvelabs(video_name: str):
 
-    app = BedrockAgentCoreApp()
     agent = Agent(
         tools=[file_read, chat_video, use_aws, find_file_from_folder, get_index, environment, slack, get_slack_channel_ids],
     )
 
-    video_name = str(input())
     video_formatted = video_name + ".mp4"
 
     prompt = "Please process the video file " + video_formatted + " located in the Zoom folder " + ZOOM_DOWNLOAD_PATH + " into the TwelveLabs index named " + os.getenv('TWELVELABS_MARENGO_INDEX_ID') + "."
+    "You should verify the index exists using the get_index tool before processing the video. It will create the index if it does not exist."
 
     result = agent(prompt)
 
-    
+    slack_announcement_prompt = "Please post message with content " + "\"The video " + video_formatted + " has been successfully uploaded and processed into TwelveLabs index.\" into the #all-strandsagent-playground channel."
+    "You should only do this after confirming the video has been fully processed. If there are any errors during processing, do not post the announcement."
+
+    agent(slack_announcement_prompt)
+
+    slack_dm_prompt = "Please summarize the video " + video_formatted + " using TwelveLabs chat_video.py and post the summary into private direct message with user Nathan Che."
+    "If you are unable to summarize the video, please inform Nathan Che that there was an issue processing the video."
+
+    agent(slack_dm_prompt)
+
+    return result
 
 if __name__ == "__main__":
 
-    agent = Agent(
-        tools=[slack, get_slack_channel_ids]
-    )
+    video_file_name = str(input("Enter the video file name (without extension): "))
 
-    result = agent("Please post message with content " + "\"Should be fixed...!\" into private direct message with user Eric Johnson.")
-
-    print(result)
+    _upload_file_to_twelvelabs(video_file_name)

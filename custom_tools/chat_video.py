@@ -48,6 +48,7 @@ See the chat_video function docstring for more details on available parameters.
 """
 
 import hashlib
+import json
 import os
 from typing import Any, Dict
 
@@ -203,15 +204,15 @@ def upload_and_index_video(video_path: str, index_id: str, api_key: str) -> str:
         video_bytes = video_file.read()
 
     # Create upload task
-    task = client.tasks.create(index_id=index_id, video_file=video_bytes, enable_video_stream=True, user_metadata={
+    task = client.tasks.create(index_id=index_id, video_file=video_bytes, enable_video_stream=True, user_metadata=json.dumps({
         "original_file_name": video_name,
         "source": "strands-agent",
-    })
+    }))
 
     # Wait for indexing to complete
     client.tasks.wait_for_done(task_id=task.id)
 
-    video_id = str(task.video_id)
+    video_id = str(task.id)
     VIDEO_CACHE[video_hash] = video_id
 
     return video_id
