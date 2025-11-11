@@ -1,13 +1,17 @@
 import { app, shell, BrowserWindow, ipcMain } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
+import { TwelveLabs } from 'twelvelabs-js'
+
 import icon from '../../resources/icon.png?asset'
 import fs from 'fs';
+import fsp from 'fs/promises'
 import path from 'path';
 import os from 'os';
 import ffmpeg from 'fluent-ffmpeg';
 import crypto from 'crypto';
 
+// App Constants
 const sessionTempDir = path.join(app.getPath('temp'), 'tl-video-agent-session');
 const videoMapPath = path.join(sessionTempDir, 'video-map.json');
 
@@ -51,6 +55,89 @@ function _generateVideoFileHash(filePath) {
   });
 }
 
+async function _check_index(apiKey) {
+
+  const twelvelabsClient = new TwelveLabs({
+    apiKey: apiKey
+  });
+
+  try {
+
+    const indexPager = await twelvelabsClient.indexes.list();
+    for await (const index of indexPager) {
+      if (index.indexName === 'strands-dev') {
+        return index;
+      }
+    }
+    
+    const index = await twelvelabsClient.indexes.create({
+      indexName: 'strands-dev',
+      models: [
+        {
+          modelName: "marengo2.7",
+          modelOptions: ["visual", "audio"]
+        },
+        {
+          modelName: "pegasus1.2",
+          modelOptions: ["visual", "audio"]
+        }
+      ]
+    })
+
+    console.log('Index created:', index);
+
+    return index;
+
+  } catch (error) {
+    console.error('Error checking index:', error);
+    throw new Error('Failed to check index');
+  }
+}
+
+async function _index_video(apiKey, index, filepath) {
+  try {
+
+    const twelvelabsClient = new TwelveLabs({
+      apiKey: apiKey
+    });
+    const videoFileStream = fs.createReadStream(filepath);
+
+    const indexTask = await twelvelabsClient.tasks.create({
+      indexId: index.id,
+      videoFile: videoFileStream,
+      enableVideoStream: true,
+    })
+
+    const task = await twelvelabsClient.tasks.waitForDone(indexTask.id, {
+      timeout: 3,
+      callback: (task) => {
+        console.log('Status: ' + task.status);
+      }
+    })
+
+    if (task.status !== "ready") {
+      throw new Error('Task failed to complete');
+    }
+
+    const videoTaskContent = await twelvelabsClient.tasks.retrieve(indexTask.id);
+
+    if (!videoTaskContent || !videoTaskContent.hls || !videoTaskContent.hls.videoUrl || !videoTaskContent.videoId || !videoTaskContent.indexId || !videoTaskContent.createdAt) {
+      throw new Error('Failed to retrieve video task content');
+    }
+
+    return {
+      hlsUrl: videoTaskContent.hls.videoUrl,
+      videoId: videoTaskContent.videoId,
+      indexId: videoTaskContent.indexId,
+      createdAt: videoTaskContent.createdAt,
+    }
+
+  } catch (error) {
+    console.error('Error indexing video:', error);
+    return null;
+  }
+}
+
 app.whenReady().then(() => {
 
   if (!fs.existsSync(sessionTempDir)){
@@ -69,25 +156,55 @@ app.whenReady().then(() => {
 
   createWindow()
 
-  ipcMain.handle('video-is-indexed', async (event, filepath) => {
-    const hash = await _generateVideoFileHash(filepath);
-    const videoMap = JSON.parse(fs.readFileSync(videoMapPath, 'utf8'));
-    if (videoMap[hash]) {
+  ipcMain.handle('get-video-content', async (event, hash) => {
+    const videoMap = JSON.parse(await fsp.readFile(videoMapPath, 'utf8'));
+
+    if (!videoMap[hash]) {
+      throw new Error('Video not found in video map. Please index the video again.  ');
+    }
+
+    return videoMap[hash];
+  })
+
+  ipcMain.handle('index-video', async (event, apiKey, filepath) => {
+
+    console.log('Indexing video:', filepath)
+    console.log('API Key:', apiKey)
+
+    try {
+
+      const videoFileHash = await _generateVideoFileHash(filepath);
+      const videoMap = JSON.parse(await fsp.readFile(videoMapPath, 'utf8'));
+      if (videoMap[videoFileHash]) {
+        return {
+          success: true,
+          content: videoMap[videoFileHash]
+        }
+      }
+
+      const index =await _check_index(apiKey);
+      const videoContent = await _index_video(apiKey, index, filepath);
+
+      videoMap[videoFileHash] = videoContent;
+      await fsp.writeFile(videoMapPath, JSON.stringify(videoMap, null, 2));
+
+      videoContent['hash'] = videoFileHash;
+
       return {
         success: true,
-        content: videoMap[hash]
+        content: videoContent
+      }
+
+    } catch (error) {
+      
+      console.error('Error indexing video:', error);
+      
+      return {
+        success: false,
+        error: error.message,
+        content: null
       }
     }
-    return {
-      success: true,
-      content: null
-    }
-  }) 
-
-  ipcMain.handle('index-video', async (event, filepath) => {
-
-   
-    
   })
 
   ipcMain.handle('fetch-thumbnail', async (event, filepath, output_dir = sessionTempDir) => {
@@ -113,19 +230,10 @@ app.whenReady().then(() => {
           timestamps: ['1'],
           filename: `${videoFileName}.png`,
           folder: output_dir,
-          //size: '320x240'
-        }).on('end', () => {
-          console.log('Thumbnail created at ' + thumbnailPath);
-        }).on('error', (err) => {
-          console.error('Error creating thumbnail:', err);
-          reject(err);
-        }).on('end', resolve);
+        }).on('error', (err) => reject(err)).on('end', resolve);
       })
   
-      return {
-        success: true,
-        content: thumbnailPath
-      }
+      return { success: true, content: thumbnailPath }
   
     } catch (error) {
       console.error('Error fetching thumbnail:', error);

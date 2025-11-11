@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import ThemeToggle from './ThemeToggle'
 
 // Simple SVG icon components
 const VideoIcon = () => (
@@ -33,7 +34,6 @@ export default function SideBar({ currentPage, setCurrentPage }) {
 
     const menuItems = [
         { id: 'Video Library', label: 'Video Library', icon: VideoIcon },
-        { id: 'Preferences', label: 'Preferences', icon: SettingsIcon },
         { id: 'Account Information', label: 'Account Information', icon: UserIcon },
         { id: 'Documentation', label: 'Documentation', icon: DocumentIcon }
     ]
@@ -63,6 +63,9 @@ export default function SideBar({ currentPage, setCurrentPage }) {
                     )
                 })}
             </nav>
+            <div className="sidebar-footer">
+                <ThemeToggle />
+            </div>
         </div>
     )
 }

@@ -1,3 +1,50 @@
+/* Theme Variables - Dark Mode (Default) */
+:root[data-theme="dark"] {
+  --theme-bg-primary: #1a1a1a;
+  --theme-bg-secondary: #1f1f1f;
+  --theme-bg-tertiary: #2a2a2a;
+  --theme-bg-hover: rgba(255, 255, 255, 0.05);
+  --theme-bg-active: rgba(0, 255, 136, 0.1);
+  
+  --theme-text-primary: #ffffff;
+  --theme-text-secondary: rgba(255, 255, 255, 0.7);
+  --theme-text-tertiary: rgba(255, 255, 255, 0.4);
+  --theme-text-muted: rgba(255, 255, 255, 0.5);
+  
+  --theme-border: rgba(255, 255, 255, 0.1);
+  --theme-border-light: rgba(255, 255, 255, 0.05);
+  
+  --theme-accent: #00ff88;
+  --theme-accent-hover: rgba(0, 255, 136, 0.15);
+  --theme-accent-shadow: rgba(0, 255, 136, 0.3);
+  
+  --theme-overlay: rgba(0, 0, 0, 0.8);
+}
+
+/* Theme Variables - Light Mode */
+:root[data-theme="light"] {
+  --theme-bg-primary: #ffffff;
+  --theme-bg-secondary: #f5f5f5;
+  --theme-bg-tertiary: #fafafa;
+  --theme-bg-hover: rgba(0, 0, 0, 0.05);
+  --theme-bg-active: rgba(0, 200, 100, 0.1);
+  
+  --theme-text-primary: #1a1a1a;
+  --theme-text-secondary: rgba(26, 26, 26, 0.7);
+  --theme-text-tertiary: rgba(26, 26, 26, 0.4);
+  --theme-text-muted: rgba(26, 26, 26, 0.5);
+  
+  --theme-border: rgba(0, 0, 0, 0.1);
+  --theme-border-light: rgba(0, 0, 0, 0.05);
+  
+  --theme-accent: #00c864;
+  --theme-accent-hover: rgba(0, 200, 100, 0.15);
+  --theme-accent-shadow: rgba(0, 200, 100, 0.2);
+  
+  --theme-overlay: rgba(255, 255, 255, 0.9);
+}
+
+/* Legacy variables for compatibility */
 :root {
   --ev-c-white: #ffffff;
   --ev-c-white-soft: #f8f8f8;
@@ -21,14 +68,11 @@
   --ev-button-alt-hover-border: transparent;
   --ev-button-alt-hover-text: var(--ev-c-text-1);
   --ev-button-alt-hover-bg: var(--ev-c-gray-2);
-}
-
-:root {
-  --color-background: var(--ev-c-white);
-  --color-background-soft: var(--ev-c-white-soft);
-  --color-background-mute: var(--ev-c-white-mute);
-
-  --color-text: var(--ev-c-black);
+  
+  --color-background: var(--theme-bg-primary);
+  --color-background-soft: var(--theme-bg-secondary);
+  --color-background-mute: var(--theme-bg-tertiary);
+  --color-text: var(--theme-text-primary);
 }
 
 *,

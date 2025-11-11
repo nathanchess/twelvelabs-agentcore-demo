@@ -1,6 +1,6 @@
 import VideoCard from './VideoCard'
 
-export default function VideoDashboard({ videoMetadata }) {
+export default function VideoDashboard({ videoMetadata, setCurrentPage }) {
     // Convert object to array if needed
     const videosArray = Array.isArray(videoMetadata) 
         ? videoMetadata 
@@ -30,7 +30,9 @@ export default function VideoDashboard({ videoMetadata }) {
                         thumbnail={video.thumbnail} 
                         title={video.name} 
                         date={video.date}
+                        filepath={video.filepath}
                         onHover={(isHovering) => handleVideoHover(isHovering, video)}
+                        setCurrentPage={setCurrentPage}
                     />
                 ))}
             </div>

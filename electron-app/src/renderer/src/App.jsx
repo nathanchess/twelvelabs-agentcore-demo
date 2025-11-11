@@ -1,6 +1,8 @@
 import Versions from './components/Versions'
 import VideoDashboard from './components/VideoDashboard'
 import SideBar from './components/SideBar'
+import AccountInformation from './components/AccountInformation'
+import VideoPlayer from './components/VideoPlayer'
 import { useEffect, useState } from 'react'
 
 function App() {
@@ -14,8 +16,6 @@ function App() {
   useEffect(() => {
 
     const fetchVideos = async () => {
-
-      console.log("Scanning folder...")
     
       const result = await scanFolder()
 
@@ -39,8 +39,6 @@ function App() {
         videoMetadata[videoKey]['thumbnail'] = thumbnail
       }
 
-      console.log("Video metadata: " + videoMetadata)
-
       setVideos(videoMetadata)
     }
 
@@ -52,7 +50,9 @@ function App() {
     <div className="app-container">
       <SideBar currentPage={currentPage} setCurrentPage={setCurrentPage} />
       <div className="app-main-content">
-        {currentPage === 'Video Library' && <VideoDashboard videoMetadata={videos} />}
+        {currentPage === 'Video Library' && <VideoDashboard videoMetadata={videos} setCurrentPage={setCurrentPage} />}
+        {currentPage === 'Account Information' && <AccountInformation />}
+        {currentPage.startsWith('video/') && <VideoPlayer hash={currentPage.split('/')[1]} />}
         <Versions></Versions>
       </div>
     </div>
