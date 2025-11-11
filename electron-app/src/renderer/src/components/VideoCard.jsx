@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useErrorModal } from '../contexts/ErrorModalContext'
 
 export default function VideoCard({ thumbnail, title, date, filepath, onHover, setCurrentPage }) {
@@ -6,7 +6,34 @@ export default function VideoCard({ thumbnail, title, date, filepath, onHover, s
     const [isHovered, setIsHovered] = useState(false)
     const [isPressed, setIsPressed] = useState(false)
     const [isIndexing, setIsIndexing] = useState(false)
+    const [isIndexed, setIsIndexed] = useState(false)
+    const [videoHash, setVideoHash] = useState(null)
     const { showError } = useErrorModal()
+
+    // Check if video is indexed on mount
+    useEffect(() => {
+        const checkIndexedStatus = async () => {
+            try {
+                const hash = await window.api.getVideoHash(filepath)
+                setVideoHash(hash)
+                
+                try {
+                    const videoContent = await window.api.getVideoContent(hash)
+                    if (videoContent) {
+                        setIsIndexed(true)
+                    }
+                } catch (error) {
+                    // Video not indexed yet
+                    setIsIndexed(false)
+                }
+            } catch (error) {
+                console.error('Error checking video status:', error)
+                setIsIndexed(false)
+            }
+        }
+
+        checkIndexedStatus()
+    }, [filepath])
 
     // Format date if it's a Date object, otherwise use as string
     const formattedDate = date 
@@ -38,6 +65,15 @@ export default function VideoCard({ thumbnail, title, date, filepath, onHover, s
     }
 
     const handleClick = async () => {
+        // If already indexed, navigate to video page
+        if (isIndexed && videoHash) {
+            if (setCurrentPage) {
+                setCurrentPage('video/' + videoHash)
+            }
+            return
+        }
+
+        // Otherwise, index the video
         setIsIndexing(true)
         try {
             const twelvelabsApiKey = localStorage.getItem('TWELVELABS_API_KEY')
@@ -49,8 +85,16 @@ export default function VideoCard({ thumbnail, title, date, filepath, onHover, s
                 throw new Error(result.error || 'Failed to index video')
             }
             
+            // Update indexed status
+            setIsIndexed(true)
+            if (result.content.hash) {
+                setVideoHash(result.content.hash)
+            }
+            
             showError('Video indexed successfully!', 'success', 3000)
-            setCurrentPage('video/' + result.content.hash)
+            if (setCurrentPage && result.content.hash) {
+                setCurrentPage('video/' + result.content.hash)
+            }
         } catch (error) {
             console.error('Error indexing video:', error)
             const errorMessage = error.message || 'An error occurred while indexing the video'
@@ -100,6 +144,14 @@ export default function VideoCard({ thumbnail, title, date, filepath, onHover, s
                                 </span>
                             </p>
                         </div>
+                    </div>
+                )}
+                {isIndexed && !isIndexing && (
+                    <div className="video-card-indexed-badge">
+                        <svg width="16" height="16" viewBox="0 0 16 16" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M13.3333 4L6 11.3333L2.66667 8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                        <span>Indexed</span>
                     </div>
                 )}
                 <div className="video-card-overlay">

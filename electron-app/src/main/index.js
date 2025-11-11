@@ -160,10 +160,14 @@ app.whenReady().then(() => {
     const videoMap = JSON.parse(await fsp.readFile(videoMapPath, 'utf8'));
 
     if (!videoMap[hash]) {
-      throw new Error('Video not found in video map. Please index the video again.  ');
+      return null;
     }
 
     return videoMap[hash];
+  })
+
+  ipcMain.handle('get-video-hash', async (event, filepath) => {
+    return await _generateVideoFileHash(filepath);
   })
 
   ipcMain.handle('index-video', async (event, apiKey, filepath) => {
