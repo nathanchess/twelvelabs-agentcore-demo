@@ -26,6 +26,8 @@ TOOL_SPEC = {
     }
 }
 
+import os
+
 def find_file_from_folder(folder_path: str, file_name: str) -> str:
 
     """

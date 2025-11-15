@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, protocol } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { TwelveLabs } from 'twelvelabs-js'
@@ -8,12 +8,15 @@ import fs from 'fs';
 import fsp from 'fs/promises'
 import path from 'path';
 import os from 'os';
-import ffmpeg from 'fluent-ffmpeg';
 import crypto from 'crypto';
 
 // App Constants
 const sessionTempDir = path.join(app.getPath('temp'), 'tl-video-agent-session');
 const videoMapPath = path.join(sessionTempDir, 'video-map.json');
+
+const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
+const ffmpeg = require('fluent-ffmpeg')
+ffmpeg.setFfmpegPath(ffmpegPath);
 
 function createWindow() {
   const mainWindow = new BrowserWindow({
@@ -138,6 +141,14 @@ async function _index_video(apiKey, index, filepath) {
   }
 }
 
+async function _verify_video_hashes() {
+
+  const videoMap = JSON.parse(await fsp.readFile(videoMapPath, 'utf8'));
+
+    
+
+}
+
 app.whenReady().then(() => {
 
   if (!fs.existsSync(sessionTempDir)){
@@ -147,6 +158,23 @@ app.whenReady().then(() => {
   if (!fs.existsSync(videoMapPath)) {
     fs.writeFileSync(videoMapPath, '{}');
   }
+
+  // Register custom protocol for serving thumbnails
+  protocol.registerFileProtocol('thumb', (request, callback) => {
+    try {
+      const filePath = request.url.replace('thumb://', '');
+      const decodedPath = decodeURIComponent(filePath);
+      
+      if (fs.existsSync(decodedPath)) {
+        callback({ path: decodedPath });
+      } else {
+        callback({ error: -6 });
+      }
+    } catch (error) {
+      console.error('Error serving thumbnail:', error);
+      callback({ error: -2 });
+    }
+  });
 
   electronApp.setAppUserModelId('com.electron')
 
@@ -222,22 +250,21 @@ app.whenReady().then(() => {
       const videoFileName = path.basename(filepath, path.extname(filepath));
       const thumbnailPath = path.join(output_dir, `${videoFileName}.png`);
   
-      if (fs.existsSync(thumbnailPath)) {
-        return {
-          success: true,
-          content: thumbnailPath
-        }
+      if (!fs.existsSync(thumbnailPath)) {
+        await new Promise((resolve, reject) => {
+          ffmpeg(filepath).screenshots({
+            timestamps: ['1'],
+            filename: `${videoFileName}.png`,
+            folder: output_dir,
+          }).on('error', (err) => reject(err)).on('end', resolve);
+        })
       }
   
-      await new Promise((resolve, reject) => {
-        ffmpeg(filepath).screenshots({
-          timestamps: ['1'],
-          filename: `${videoFileName}.png`,
-          folder: output_dir,
-        }).on('error', (err) => reject(err)).on('end', resolve);
-      })
+      // Convert file path to custom protocol URL
+      // Encode the path to handle special characters
+      const protocolUrl = `thumb://${encodeURIComponent(thumbnailPath)}`;
   
-      return { success: true, content: thumbnailPath }
+      return { success: true, content: protocolUrl }
   
     } catch (error) {
       console.error('Error fetching thumbnail:', error);

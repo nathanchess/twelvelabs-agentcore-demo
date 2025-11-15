@@ -37,8 +37,9 @@ function App() {
         }
         const thumbnail = thumbnailResponse['content']
         videoMetadata[videoKey]['thumbnail'] = thumbnail
+        console.log(videoMetadata[videoKey])
       }
-
+    
       setVideos(videoMetadata)
     }
 

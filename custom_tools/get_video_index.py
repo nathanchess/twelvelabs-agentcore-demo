@@ -9,6 +9,10 @@ TOOL_SPEC = {
     "inputSchema": {}
 }
 
+import os
+from twelvelabs import TwelveLabs
+from twelvelabs.indexes import IndexesCreateRequestModelsItem
+
 def get_video_index() -> str:
 
     # NOTE: Could possibly be integrated into official Strands tooling... No need for developers to manually navigate to TwelveLabs playground to create index.
