@@ -259,6 +259,10 @@ app.whenReady().then(() => {
     Slack App Token: ${slack_app_token}
 
     Automatically set API keys and tokens if provided. No need for confirmation. Do NOT write the API keys and tokens to the response, just handle them internally.
+    If a key action is required that requires a certain key or token, please ask the user to navigate to the "Account Information" page to set the key or token.
+
+    DO NOT write the API keys and tokens to the response, just handle them internally.
+    DO NOT take extra actions, especially in regards to Slack or TwelveLabs. Do only what you are told to do and clarify if needed with the user.
 
     Here is the prompt:
     ${prompt}
@@ -386,6 +390,72 @@ app.whenReady().then(() => {
     return {
       success: true
     }
+  })
+
+  ipcMain.handle('get-video-gist', async (event, apiKey, videoId, indexId) => {
+
+    try {
+
+
+      const twelveLabsClient = new TwelveLabs({
+        apiKey: apiKey
+      })
+
+      const videoInfo = await twelveLabsClient.indexes.videos.retrieve(indexId, videoId)
+
+      if (!videoInfo || !videoInfo.systemMetadata) {
+        throw new Error('Failed to retrieve video info');
+      }
+
+      let transcript = [];
+
+      if (videoInfo.transcription) {
+        videoInfo.transcription.forEach((item) => {
+          transcript.push({
+            "start": item.start,
+            "end": item.end,
+            "text": item.value
+          })
+        })
+      }
+
+      const videoSummaryResponse = await twelveLabsClient.summarize({
+        videoId: videoId,
+        type: 'summary',
+      })
+
+      if (!videoSummaryResponse || !videoSummaryResponse.summary) {
+        throw new Error('Failed to retrieve video summary');
+      }
+
+      const videoChapterResponse = await twelveLabsClient.summarize({
+        videoId: videoId,
+        type: 'chapter',
+      })
+
+      if (!videoChapterResponse || !videoChapterResponse.chapters) {
+        throw new Error('Failed to retrieve video chapters');
+      }
+
+      return {
+        success: true,
+        content: {
+          "filename": videoInfo.systemMetadata?.filename,
+          "duration": videoInfo.systemMetadata?.duration,
+          "transcript": transcript,
+          "summary": videoSummaryResponse.summary,
+          "chapters": videoChapterResponse.chapters
+        }
+      }
+      
+    } catch (error) {
+      console.error('Error getting video gist:', error);
+      return {
+        success: false,
+        error: error.message
+      }
+    }
+
   })
 
   ipcMain.handle('get-video-hash', async (event, filepath) => {

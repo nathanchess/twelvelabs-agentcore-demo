@@ -131,12 +131,19 @@ export default function AgentChat({ videoId }) {
     const [isLoading, setIsLoading] = useState(false)
     const [isTyping, setIsTyping] = useState(false)
     const messagesEndRef = useRef(null)
+    const messagesContainerRef = useRef(null)
     const inputRef = useRef(null)
     const currentAssistantMessageIdRef = useRef(null)
     const responseHandlersRef = useRef({ response: null, complete: null, error: null })
 
     const scrollToBottom = () => {
-        messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
+        if (messagesContainerRef.current) {
+            // Scroll the messages container, not the entire page
+            messagesContainerRef.current.scrollTo({
+                top: messagesContainerRef.current.scrollHeight,
+                behavior: 'smooth'
+            })
+        }
     }
 
     useEffect(() => {
@@ -284,6 +291,74 @@ export default function AgentChat({ videoId }) {
         }
     }
 
+    const handleQuickAction = (prompt) => {
+        if (isLoading) return
+        setInputValue(prompt)
+        // Auto-focus the input
+        setTimeout(() => {
+            inputRef.current?.focus()
+        }, 0)
+    }
+
+    // Quick action buttons with icons
+    const quickActions = [
+        {
+            id: 'slack-followup',
+            label: 'Send Follow-up to Slack',
+            prompt: 'Send a follow-up message to all Slack members who were in this video meeting summarizing the key points and action items.',
+            icon: (
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M5.042 15.165a2.528 2.528 0 0 1-2.52 2.523A2.528 2.528 0 0 1 0 15.165a2.527 2.527 0 0 1 2.522-2.52h2.52v2.52zM6.313 15.165a2.527 2.527 0 0 1 2.521-2.52 2.527 2.527 0 0 1 2.521 2.52v6.313A2.528 2.528 0 0 1 8.834 24a2.528 2.528 0 0 1-2.521-2.522v-6.313zM8.834 5.042a2.528 2.528 0 0 1-2.521-2.52A2.528 2.528 0 0 1 8.834 0a2.528 2.528 0 0 1 2.521 2.522v2.52H8.834zM8.834 6.313a2.528 2.528 0 0 1 2.521 2.521 2.528 2.528 0 0 1-2.521 2.521H2.522A2.528 2.528 0 0 1 0 8.834a2.528 2.528 0 0 1 2.522-2.521h6.312zM18.956 5.042a2.528 2.528 0 0 1 2.522-2.52A2.528 2.528 0 0 1 24 5.042a2.528 2.528 0 0 1-2.522 2.52h-2.522V5.042zM17.688 5.042a2.528 2.528 0 0 1-2.523 2.52 2.527 2.527 0 0 1-2.52-2.52V2.522A2.527 2.527 0 0 1 15.165 0a2.528 2.528 0 0 1 2.523 2.522v2.52zM15.165 18.956a2.528 2.528 0 0 1 2.523 2.522A2.528 2.528 0 0 1 15.165 24a2.527 2.527 0 0 1-2.52-2.522v-2.522h2.52zM15.165 17.688a2.527 2.527 0 0 1-2.52-2.523 2.526 2.526 0 0 1 2.52-2.52h6.313A2.527 2.527 0 0 1 24 15.165a2.528 2.528 0 0 1-2.522 2.523h-6.313z" fill="currentColor"/>
+                </svg>
+            )
+        },
+        {
+            id: 'member-list',
+            label: 'Generate Member List',
+            prompt: 'Generate a comprehensive list of all meeting participants with their roles and key contributions during the video.',
+            icon: (
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M10 10C12.7614 10 15 7.76142 15 5C15 2.23858 12.7614 0 10 0C7.23858 0 5 2.23858 5 5C5 7.76142 7.23858 10 10 10Z" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                    <path d="M2.5 18.3333C2.5 14.5714 5.57143 11.5 9.33333 11.5H10.6667C14.4286 11.5 17.5 14.5714 17.5 18.3333" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+            )
+        },
+        {
+            id: 'key-points',
+            label: 'Extract Key Points',
+            prompt: 'Extract and summarize the key points, decisions, and action items discussed in this video meeting.',
+            icon: (
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M2 5H18M2 10H18M2 15H12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                    <circle cx="15" cy="15" r="2" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                </svg>
+            )
+        },
+        {
+            id: 'summary',
+            label: 'Video Summary',
+            prompt: 'Provide a detailed summary of this video including main topics discussed, participants involved, and important outcomes.',
+            icon: (
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M5 3H12L15 6V17C15 17.5523 14.5523 18 14 18H5C4.44772 18 4 17.5523 4 17V4C4 3.44772 4.44772 3 5 3Z" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                    <path d="M12 3V7H15" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                    <path d="M7 11H13M7 14H11" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/>
+                </svg>
+            )
+        },
+        {
+            id: 'timeline',
+            label: 'Meeting Timeline',
+            prompt: 'Create a timeline of the meeting showing when different topics were discussed and when participants joined or left.',
+            icon: (
+                <svg width="18" height="18" viewBox="0 0 20 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <circle cx="10" cy="10" r="8" stroke="currentColor" strokeWidth="1.5" fill="none"/>
+                    <path d="M10 6V10L13 13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                </svg>
+            )
+        }
+    ]
+
     // Auto-resize textarea
     useEffect(() => {
         if (inputRef.current) {
@@ -306,7 +381,27 @@ export default function AgentChat({ videoId }) {
                 </div>
             </div>
 
-            <div className="agent-chat-messages">
+            <div className="agent-chat-quick-actions">
+                <div className="agent-chat-quick-actions-label">Quick Actions</div>
+                <div className="agent-chat-quick-actions-buttons">
+                    {quickActions.map((action) => (
+                        <button
+                            key={action.id}
+                            className="agent-chat-quick-action-button"
+                            onClick={() => handleQuickAction(action.prompt)}
+                            disabled={isLoading}
+                            title={action.prompt}
+                        >
+                            <span className="agent-chat-quick-action-icon">
+                                {action.icon}
+                            </span>
+                            <span className="agent-chat-quick-action-label">{action.label}</span>
+                        </button>
+                    ))}
+                </div>
+            </div>
+
+            <div className="agent-chat-messages" ref={messagesContainerRef}>
                 {messages.map((message) => (
                     (
                         message.content.length > 0 && (

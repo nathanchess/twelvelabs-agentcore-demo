@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import Hls from 'hls.js'
 import AgentChat from './AgentChat'
+import VideoGist from './VideoGist'
 
 export default function VideoPlayer({ hash }) {
     const [videoContent, setVideoContent] = useState(null)
@@ -111,8 +112,42 @@ export default function VideoPlayer({ hash }) {
         }
     }, [videoContent])
 
+    const formatDate = (dateString) => {
+        if (!dateString) return 'N/A'
+        try {
+            const date = new Date(dateString)
+            return date.toLocaleDateString('en-US', {
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+            })
+        } catch (e) {
+            return dateString
+        }
+    }
+
     return (
         <div className="video-player">
+            {videoContent && (
+                <div className="video-player-header">
+                    <div className="video-player-header-content">
+                        <div className="video-player-header-item">
+                            <span className="video-player-header-label">Video ID:</span>
+                            <span className="video-player-header-value">{videoContent.videoId || 'N/A'}</span>
+                        </div>
+                        <div className="video-player-header-item">
+                            <span className="video-player-header-label">Hash:</span>
+                            <span className="video-player-header-value">{hash || 'N/A'}</span>
+                        </div>
+                        <div className="video-player-header-item">
+                            <span className="video-player-header-label">Created:</span>
+                            <span className="video-player-header-value">{formatDate(videoContent.createdAt)}</span>
+                        </div>
+                    </div>
+                </div>
+            )}
             <div className="video-player-container">
                 <div className="video-player-video-wrapper">
                     <video ref={videoElement} controls />
@@ -121,6 +156,9 @@ export default function VideoPlayer({ hash }) {
                     <AgentChat videoId={videoContent.videoId} />
                 )}
             </div>
+            {videoContent && (
+                <VideoGist videoId={videoContent.videoId} indexId={videoContent.indexId} />
+            )}
         </div>
     )
 }
