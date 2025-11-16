@@ -15,7 +15,7 @@ from strands_tools import slack
 import os
 import json
 
-def get_slack_channel_ids() -> dict | str:
+def get_slack_channel_ids(**kwargs) -> dict | str:
     
     """
     
