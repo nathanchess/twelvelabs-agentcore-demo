@@ -141,11 +141,30 @@ async function _index_video(apiKey, index, filepath) {
   }
 }
 
-async function _verify_video_hashes() {
-
+async function _delete_hash(hash) {
   const videoMap = JSON.parse(await fsp.readFile(videoMapPath, 'utf8'));
+  if (videoMap[hash]) {
+    delete videoMap[hash];
+    await fsp.writeFile(videoMapPath, JSON.stringify(videoMap, null, 2));
+  }
+}
 
-    
+async function _check_video_id(apiKey, videoId, indexId) {
+
+  try {
+    const twelveLabsClient = new TwelveLabs({
+      apiKey: apiKey
+    })
+    const video = await twelveLabsClient.indexes.videos.retrieve(indexId, videoId)
+    if (video.id) {
+      return true;
+    } else {
+      return false;
+    }
+  } catch (error) {
+    console.error('Error checking video ID:', error);
+    return false;
+  }
 
 }
 
@@ -184,14 +203,189 @@ app.whenReady().then(() => {
 
   createWindow()
 
-  ipcMain.handle('get-video-content', async (event, hash) => {
+  ipcMain.handle('get-video-content', async (event, apiKey, hash) => {
+
     const videoMap = JSON.parse(await fsp.readFile(videoMapPath, 'utf8'));
 
-    if (!videoMap[hash]) {
-      return null;
+    if (videoMap[hash]) {
+
+      const indexId = videoMap[hash].indexId
+      const videoId = videoMap[hash].videoId
+      const videoExists = await _check_video_id(apiKey, videoId, indexId)
+
+      if (!videoExists) {
+        await _delete_hash(hash)
+        return null;
+      }
+
+      return videoMap[hash]
+
     }
 
-    return videoMap[hash];
+    return null
+  })
+
+  ipcMain.handle('prompt-strands-agent', async (event, prompt, twelveLabsApiKey, slack_bot_token, slack_app_token, chat_history, videoId) => {
+
+    console.log('Prompting Strands Agent:', prompt)
+    console.log('TwelveLabs API Key:', twelveLabsApiKey)
+    console.log('Slack Bot Token:', slack_bot_token)
+    console.log('Slack App Token:', slack_app_token)
+    console.log('Video ID:', videoId)
+
+    const prompt_template = `
+    You are a helpful assistant that analyzes Zoom video recordings then answers questions about the video.
+
+    Alongside answering questions you can also search the video for specific moments, or summarize the video.
+    You can also send messages in a Slack channel, in provided the Slack bot token and app token.
+    The Slack channel will likely have people that were in the video recording and you may be asked to send messages to them based on the prompt.
+
+    The user will provide you with a video ID, representing the video ID indexed in TwelveLabs. You can use this video ID to analyze the video.
+    
+    Here is the video ID:
+    ${videoId}
+
+    If NOT provided the Slack bot token and app token, you will not be able to send messages in a Slack channel.
+    If NOT provided the TwelveLabs API key, you will not be able to analyze the video.
+
+    Here is the chat history:
+    ${chat_history.map(message => `${message.role}: ${message.content}`).join('\n')}
+
+    Please continue the conversation based on the chat history and the prompt.
+
+    Here is the API key and tokens:
+    TwelveLabs API Key: ${twelveLabsApiKey}
+    Slack Bot Token: ${slack_bot_token}
+    Slack App Token: ${slack_app_token}
+
+    Automatically set API keys and tokens if provided. No need for confirmation. Do NOT write the API keys and tokens to the response, just handle them internally.
+
+    Here is the prompt:
+    ${prompt}
+    `
+
+    let response;
+
+    try {
+      response = await fetch('http://localhost:8080/invocations', {
+        method: 'POST',
+        body: JSON.stringify({
+          prompt: prompt_template
+        }),
+        headers: {
+          'Content-Type': 'application/json',
+        }
+      })
+
+      if (!response.ok) {
+        throw new Error('Failed to prompt strands agent');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = '';
+
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          
+          if (done) {
+            break;
+          }
+
+          // Decode new chunk and add to buffer
+          const newChunk = decoder.decode(value, { stream: true });
+          buffer += newChunk;
+          
+          // Process complete lines (SSE format: lines end with \n)
+          // Find the last complete line (ending with \n)
+          let lastNewlineIndex = buffer.lastIndexOf('\n');
+          
+          if (lastNewlineIndex !== -1) {
+            // Extract all complete lines (everything up to and including the last \n)
+            const completeLines = buffer.substring(0, lastNewlineIndex + 1);
+            // Keep only the incomplete part in buffer
+            buffer = buffer.substring(lastNewlineIndex + 1);
+            
+            // Process each complete line
+            const lines = completeLines.split('\n');
+            for (const line of lines) {
+              const trimmedLine = line.trim();
+              
+              // Skip empty lines
+              if (!trimmedLine) continue;
+              
+              if (trimmedLine.startsWith('data: ')) {
+                const data = trimmedLine.substring(6); // Remove 'data: ' prefix
+                
+                // Handle JSON-encoded strings (remove quotes if present)
+                let cleanedData = data;
+                if (data.startsWith('"') && data.endsWith('"')) {
+                  try {
+                    cleanedData = JSON.parse(data);
+                  } catch (e) {
+                    // If not valid JSON, just remove outer quotes
+                    cleanedData = data.slice(1, -1);
+                  }
+                }
+                
+                if (cleanedData && cleanedData !== '[DONE]') {
+                  console.log('Sending chunk:', cleanedData);
+                  event.sender.send('prompt-strands-agent-response', cleanedData);
+                }
+              } else if (!trimmedLine.startsWith(':')) {
+                // Handle non-SSE format lines (plain text) - skip comment lines
+                console.log('Sending non-SSE chunk:', trimmedLine);
+                event.sender.send('prompt-strands-agent-response', trimmedLine);
+              }
+            }
+          }
+          // If no newline found, keep accumulating in buffer
+        }
+
+        // Process any remaining buffer after stream ends
+        if (buffer.trim()) {
+          const trimmedLine = buffer.trim();
+          if (trimmedLine.startsWith('data: ')) {
+            const data = trimmedLine.substring(6);
+            let cleanedData = data;
+            if (data.startsWith('"') && data.endsWith('"')) {
+              try {
+                cleanedData = JSON.parse(data);
+              } catch (e) {
+                cleanedData = data.slice(1, -1);
+              }
+            }
+            if (cleanedData && cleanedData !== '[DONE]') {
+              console.log('Sending final chunk:', cleanedData);
+              event.sender.send('prompt-strands-agent-response', cleanedData);
+            }
+          } else if (trimmedLine && !trimmedLine.startsWith(':')) {
+            console.log('Sending final non-SSE chunk:', trimmedLine);
+            event.sender.send('prompt-strands-agent-response', trimmedLine);
+          }
+        }
+
+        event.sender.send('prompt-strands-agent-complete');
+
+      } catch (error) {
+        console.error('Error reading strands agent response:', error);
+        event.sender.send('prompt-strands-agent-error', error.message);
+        throw error;
+      }
+
+    } catch (error) {
+      console.error('Error prompting strands agent:', error);
+      event.sender.send('prompt-strands-agent-error', error.message);
+      return {
+        success: false,
+        error: error.message
+      }
+    }
+
+    return {
+      success: true
+    }
   })
 
   ipcMain.handle('get-video-hash', async (event, filepath) => {

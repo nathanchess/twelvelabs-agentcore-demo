@@ -51,7 +51,7 @@ function App() {
     <div className="app-container">
       <SideBar currentPage={currentPage} setCurrentPage={setCurrentPage} />
       <div className="app-main-content">
-        {currentPage === 'Video Library' && <VideoDashboard videoMetadata={videos} setCurrentPage={setCurrentPage} />}
+        {currentPage === 'Video Library' && <VideoDashboard videoMetadata={videos} setCurrentPage={setCurrentPage} currentPage={currentPage} />}
         {currentPage === 'Account Information' && <AccountInformation />}
         {currentPage.startsWith('video/') && <VideoPlayer hash={currentPage.split('/')[1]} />}
         <Versions></Versions>

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useErrorModal } from '../contexts/ErrorModalContext'
 
-export default function VideoCard({ thumbnail, title, date, filepath, onHover, setCurrentPage }) {
+export default function VideoCard({ thumbnail, title, date, filepath, onHover, setCurrentPage, currentPage }) {
 
     const [isHovered, setIsHovered] = useState(false)
     const [isPressed, setIsPressed] = useState(false)
@@ -10,30 +10,39 @@ export default function VideoCard({ thumbnail, title, date, filepath, onHover, s
     const [videoHash, setVideoHash] = useState(null)
     const { showError } = useErrorModal()
 
-    // Check if video is indexed on mount
+    // Check if video is indexed whenever VideoDashboard page is loaded
     useEffect(() => {
+        // Only check if we're on the Video Library page
+        if (currentPage !== 'Video Library') {
+            return
+        }
+
+        console.log('Checking indexed status for video:', filepath)
+
         const checkIndexedStatus = async () => {
             try {
                 const hash = await window.api.getVideoHash(filepath)
                 setVideoHash(hash)
                 
                 try {
-                    const videoContent = await window.api.getVideoContent(hash)
-                    if (videoContent) {
-                        setIsIndexed(true)
-                    }
+                    if (localStorage.getItem('TWELVELABS_API_KEY')) {
+                        const videoContent = await window.api.getVideoContent(localStorage.getItem('TWELVELABS_API_KEY'), hash)
+                        if (videoContent) {
+                            setIsIndexed(true)
+                        } else {
+                            setIsIndexed(false)
+                        }
+                    } 
                 } catch (error) {
-                    // Video not indexed yet
                     setIsIndexed(false)
                 }
             } catch (error) {
-                console.error('Error checking video status:', error)
                 setIsIndexed(false)
             }
         }
 
         checkIndexedStatus()
-    }, [filepath])
+    }, [currentPage, filepath])
 
     // Format date if it's a Date object, otherwise use as string
     const formattedDate = date 

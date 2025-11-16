@@ -6,8 +6,18 @@ const api = {
   scanFolder: () => electronAPI.ipcRenderer.invoke('scan-folder'),
   fetchThumbnail: (filepath, output_dir) => electronAPI.ipcRenderer.invoke('fetch-thumbnail', filepath, output_dir),
   indexVideo: (apiKey, filepath) => electronAPI.ipcRenderer.invoke('index-video', apiKey, filepath),
-  getVideoContent: (hash) => electronAPI.ipcRenderer.invoke('get-video-content', hash),
-  getVideoHash: (filepath) => electronAPI.ipcRenderer.invoke('get-video-hash', filepath)
+  getVideoContent: (apiKey, hash) => electronAPI.ipcRenderer.invoke('get-video-content', apiKey, hash),
+  getVideoHash: (filepath) => electronAPI.ipcRenderer.invoke('get-video-hash', filepath),
+  promptStrandsAgent: (prompt, twelveLabsApiKey, slack_bot_token, slack_app_token, chat_history, videoId) => electronAPI.ipcRenderer.invoke('prompt-strands-agent', prompt, twelveLabsApiKey, slack_bot_token, slack_app_token, chat_history, videoId),
+  promptStrandsAgentComplete: (callback) => electronAPI.ipcRenderer.on('prompt-strands-agent-complete', (event) => {
+    callback()
+  }),
+  promptStrandsAgentError: (callback) => electronAPI.ipcRenderer.on('prompt-strands-agent-error', (event, errorMsg) => {
+    callback(errorMsg)
+  }),
+  promptStrandsAgentResponse: (callback) => electronAPI.ipcRenderer.on('prompt-strands-agent-response', (event, chunk) => {
+    callback(chunk)
+  }),
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

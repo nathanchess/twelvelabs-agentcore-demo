@@ -1,6 +1,6 @@
 import VideoCard from './VideoCard'
 
-export default function VideoDashboard({ videoMetadata, setCurrentPage }) {
+export default function VideoDashboard({ videoMetadata, setCurrentPage, currentPage }) {
     // Convert object to array if needed
     const videosArray = Array.isArray(videoMetadata) 
         ? videoMetadata 
@@ -9,10 +9,10 @@ export default function VideoDashboard({ videoMetadata, setCurrentPage }) {
     const handleVideoHover = (isHovering, video) => {
         // This will be used later for video playback
         if (isHovering) {
-            console.log('Hovering over video:', video.name)
+            
             // Future: Start video playback here
         } else {
-            console.log('Stopped hovering over video:', video.name)
+            
             // Future: Pause video playback here
         }
     }
@@ -33,6 +33,7 @@ export default function VideoDashboard({ videoMetadata, setCurrentPage }) {
                         filepath={video.filepath}
                         onHover={(isHovering) => handleVideoHover(isHovering, video)}
                         setCurrentPage={setCurrentPage}
+                        currentPage={currentPage}
                     />
                 ))}
             </div>
