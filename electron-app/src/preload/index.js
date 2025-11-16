@@ -19,6 +19,8 @@ const api = {
   promptStrandsAgentResponse: (callback) => electronAPI.ipcRenderer.on('prompt-strands-agent-response', (event, chunk) => {
     callback(chunk)
   }),
+  uploadVideo: (filePath, targetFileName) => electronAPI.ipcRenderer.invoke('upload-video', filePath, targetFileName),
+  showOpenDialog: (options) => electronAPI.ipcRenderer.invoke('show-open-dialog', options),
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to

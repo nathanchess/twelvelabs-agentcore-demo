@@ -1,4 +1,4 @@
-import { app, shell, BrowserWindow, ipcMain, protocol } from 'electron'
+import { app, shell, BrowserWindow, ipcMain, protocol, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { TwelveLabs } from 'twelvelabs-js'
@@ -191,6 +191,23 @@ app.whenReady().then(() => {
       }
     } catch (error) {
       console.error('Error serving thumbnail:', error);
+      callback({ error: -2 });
+    }
+  });
+
+  // Register custom protocol for video preview
+  protocol.registerFileProtocol('video', (request, callback) => {
+    try {
+      const filePath = request.url.replace('video://', '');
+      const decodedPath = decodeURIComponent(filePath);
+      
+      if (fs.existsSync(decodedPath)) {
+        callback({ path: decodedPath });
+      } else {
+        callback({ error: -6 });
+      }
+    } catch (error) {
+      console.error('Error serving video:', error);
       callback({ error: -2 });
     }
   });
@@ -447,7 +464,7 @@ app.whenReady().then(() => {
           "chapters": videoChapterResponse.chapters
         }
       }
-      
+
     } catch (error) {
       console.error('Error getting video gist:', error);
       return {
@@ -456,6 +473,64 @@ app.whenReady().then(() => {
       }
     }
 
+  })
+
+  ipcMain.handle('upload-video', async (event, filePath, targetFileName) => {
+    try {
+      const platform = os.platform();
+      let directoryPath = '';
+
+      if (platform === 'win32') {
+        const systemRoot = path.parse(process.cwd()).root;
+        directoryPath = path.join(systemRoot, 'Users', os.userInfo().username, 'Documents', 'Zoom');
+      } else if (platform === 'darwin') {
+        directoryPath = path.join(os.homedir(), 'Documents', 'Zoom');
+      } else {
+        throw new Error('Unsupported platform: ' + platform);
+      }
+
+      if (!fs.existsSync(directoryPath)) {
+        throw new Error('Directory does not exist. ' + directoryPath);
+      }
+
+      const newFilePath = path.join(directoryPath, targetFileName + path.extname(filePath));
+      await fsp.copyFile(filePath, newFilePath, fs.constants.COPYFILE_EXCL);
+
+      console.log('Video file uploaded to:', newFilePath);
+
+      return {
+        success: true,
+        content: newFilePath
+      }
+
+    } catch (error) {
+      console.error('Error cloning video file:', error);
+      return {
+        success: false,
+        error: error.message,
+        content: null
+      }
+    }
+
+  })
+
+  ipcMain.handle('show-open-dialog', async (event, options) => {
+    try {
+      const result = await dialog.showOpenDialog(options)
+      return {
+        success: !result.canceled,
+        filePaths: result.filePaths,
+        canceled: result.canceled
+      }
+    } catch (error) {
+      console.error('Error showing open dialog:', error)
+      return {
+        success: false,
+        error: error.message,
+        filePaths: [],
+        canceled: true
+      }
+    }
   })
 
   ipcMain.handle('get-video-hash', async (event, filepath) => {

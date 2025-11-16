@@ -1,4 +1,5 @@
 import VideoCard from './VideoCard'
+import UploadVideo from './UploadVideo'
 
 export default function VideoDashboard({ videoMetadata, setCurrentPage, currentPage }) {
     // Convert object to array if needed
@@ -24,6 +25,7 @@ export default function VideoDashboard({ videoMetadata, setCurrentPage, currentP
                 <p className="video-dashboard-subtitle">Bring your local video archive to advanced TwelveLabs video intelligence and AWS Strands Agent</p>
             </div>
             <div className="video-dashboard-grid">
+                <UploadVideo />
                 {videosArray.map((video, index) => (
                     <VideoCard 
                         key={video.id || index} 
