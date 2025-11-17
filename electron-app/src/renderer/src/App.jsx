@@ -13,45 +13,46 @@ function App() {
   const scanFolder = async () => await window.api.scanFolder()
   const fetchThumbnail = async (filepath) => await window.api.fetchThumbnail(filepath)
 
-  useEffect(() => {
-
-    const fetchVideos = async () => {
+  const fetchVideos = async () => {
     
-      const result = await scanFolder()
+    const result = await scanFolder()
 
-      if (!result['success']) {
-        console.error("Failed to scan folder: " + result['error'])
-        return
-      }
-
-      const videoMetadata = result['content']
-
-      // Fetch thumbnails for each video, given the file path.
-      for (const videoKey in videoMetadata) {
-        const metadata = videoMetadata[videoKey]
-        console.log("Fetching thumbnail for " + metadata.filepath)
-        const thumbnailResponse = await fetchThumbnail(metadata.filepath)
-        if (!thumbnailResponse['success']) {
-          console.error("Failed to fetch thumbnail: " + thumbnailResponse['error'])
-          continue
-        }
-        const thumbnail = thumbnailResponse['content']
-        videoMetadata[videoKey]['thumbnail'] = thumbnail
-        console.log(videoMetadata[videoKey])
-      }
-    
-      setVideos(videoMetadata)
+    if (!result['success']) {
+      console.error("Failed to scan folder: " + result['error'])
+      return
     }
 
-    fetchVideos()
+    const videoMetadata = result['content']
 
+    // Fetch thumbnails for each video, given the file path.
+    for (const videoKey in videoMetadata) {
+      const metadata = videoMetadata[videoKey]
+      const thumbnailResponse = await fetchThumbnail(metadata.filepath)
+      if (!thumbnailResponse['success']) {
+        console.error("Failed to fetch thumbnail: " + thumbnailResponse['error'])
+        continue
+      }
+      const thumbnail = thumbnailResponse['content']
+      videoMetadata[videoKey]['thumbnail'] = thumbnail
+    }
+  
+    setVideos(videoMetadata)
+  }
+
+  useEffect(() => {
+    fetchVideos()
   }, [])
+
+  const handleVideoDeleted = () => {
+    // Refresh the video list after deletion
+    fetchVideos()
+  }
 
   return (
     <div className="app-container">
       <SideBar currentPage={currentPage} setCurrentPage={setCurrentPage} />
       <div className="app-main-content">
-        {currentPage === 'Video Library' && <VideoDashboard videoMetadata={videos} setCurrentPage={setCurrentPage} currentPage={currentPage} />}
+        {currentPage === 'Video Library' && <VideoDashboard videoMetadata={videos} setCurrentPage={setCurrentPage} currentPage={currentPage} onVideoDeleted={handleVideoDeleted} />}
         {currentPage === 'Account Information' && <AccountInformation />}
         {currentPage.startsWith('video/') && <VideoPlayer hash={currentPage.split('/')[1]} />}
         <Versions></Versions>

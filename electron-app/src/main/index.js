@@ -220,6 +220,52 @@ app.whenReady().then(() => {
 
   createWindow()
 
+  ipcMain.handle('delete-video', async (event, apiKey, filePath) => {
+    try {
+
+      const videoMap = JSON.parse(await fsp.readFile(videoMapPath, 'utf8'));
+      const videoFileHash = await _generateVideoFileHash(filePath);
+
+
+      if (apiKey && videoMap[videoFileHash] && videoMap[videoFileHash].videoId) {
+
+        const twelveLabsClient = new TwelveLabs({
+          apiKey: apiKey
+        })
+
+        const index = await _check_index(apiKey);
+        const videoExists = await _check_video_id(apiKey, videoMap[videoFileHash].videoId, index.id);
+
+        if (videoMap[videoFileHash] && videoMap[videoFileHash].videoId && videoExists) {
+
+          const deleteVideoResponse = await twelveLabsClient.indexes.videos.delete(index.id, videoMap[videoFileHash].videoId)
+
+          if (!deleteVideoResponse || !deleteVideoResponse.success) {
+            throw new Error('Failed to delete video');
+          }
+        }
+      }
+
+      if (videoMap[videoFileHash]) {
+        await _delete_hash(videoFileHash)
+      }
+
+      fs.unlinkSync(filePath);
+
+      return {
+        success: true,
+        content: null
+      }
+
+    } catch (error) {
+      console.error('Error deleting video:', error);
+      return {
+        success: false,
+        error: error.message
+      }
+    }
+  })
+
   ipcMain.handle('get-video-content', async (event, apiKey, hash) => {
 
     const videoMap = JSON.parse(await fsp.readFile(videoMapPath, 'utf8'));
