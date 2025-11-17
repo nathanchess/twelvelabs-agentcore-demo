@@ -485,7 +485,7 @@ code {
 /* Video Card Delete Button */
 .video-card-delete-button {
   position: absolute;
-  top: 12px;
+  bottom: 12px;
   right: 12px;
   width: 40px;
   height: 40px;
@@ -498,7 +498,7 @@ code {
   align-items: center;
   justify-content: center;
   transition: all 0.2s ease;
-  z-index: 10;
+  z-index: 15;
   backdrop-filter: blur(8px);
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
   animation: deleteButtonFadeIn 0.2s ease;
@@ -703,6 +703,22 @@ code {
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+}
+
+.sidebar-header {
+  padding: 24px 20px;
+  border-bottom: 1px solid var(--theme-border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-logo {
+  max-width: 100%;
+  height: auto;
+  max-height: 40px;
+  object-fit: contain;
+  transition: opacity 0.2s ease;
 }
 
 .sidebar-nav {

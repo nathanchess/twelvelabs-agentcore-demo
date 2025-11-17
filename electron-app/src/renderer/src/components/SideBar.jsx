@@ -1,5 +1,8 @@
 import { useState } from 'react'
+import { useTheme } from '../contexts/ThemeContext'
 import ThemeToggle from './ThemeToggle'
+import tlLogoBlack from '../../../../resources/tl_logo_black.png'
+import tlLogoWhite from '../../../../resources/tl_logo_white.png'
 
 // Simple SVG icon components
 const VideoIcon = () => (
@@ -31,6 +34,7 @@ const DocumentIcon = () => (
 )
 
 export default function SideBar({ currentPage, setCurrentPage }) {
+    const { theme } = useTheme()
 
     const menuItems = [
         { id: 'Video Library', label: 'Video Library', icon: VideoIcon },
@@ -46,6 +50,13 @@ export default function SideBar({ currentPage, setCurrentPage }) {
 
     return (
         <div className="sidebar">
+            <div className="sidebar-header">
+                <img 
+                    src={theme === 'dark' ? tlLogoWhite : tlLogoBlack} 
+                    alt="TwelveLabs" 
+                    className="sidebar-logo"
+                />
+            </div>
             <nav className="sidebar-nav">
                 {menuItems.map((item) => {
                     const IconComponent = item.icon
