@@ -5,6 +5,9 @@ import AccountInformation from './components/AccountInformation'
 import VideoPlayer from './components/VideoPlayer'
 import { useEffect, useState } from 'react'
 
+// Track if env variables have been sent (persists across component remounts)
+let envVariablesSent = false
+
 function App() {
 
   const [videos, setVideos] = useState([])
@@ -39,8 +42,37 @@ function App() {
     setVideos(videoMetadata)
   }
 
+  const sendEnvVariables = async () => {
+    // Only send once on app load
+    if (envVariablesSent) {
+      return
+    }
+    
+    envVariablesSent = true
+    
+    const twelveLabsApiKey = localStorage.getItem('TWELVELABS_API_KEY')
+    const slack_bot_token = localStorage.getItem('SLACK_BOT_TOKEN')
+    const slack_app_token = localStorage.getItem('SLACK_APP_TOKEN')
+
+    await window.api.promptStrandsAgent(
+      "Send the environment variables to the agent and enable socket mode for Slack auto reply",
+      twelveLabsApiKey,
+      slack_bot_token,
+      slack_app_token,
+      [],
+      ""
+    )
+  }
+
+  const createAgentSession = async () => {
+    const sessionId = await window.api.createAgentSession()
+    console.log('Agent session created:', sessionId)
+  }
+
   useEffect(() => {
     fetchVideos()
+    sendEnvVariables()
+    createAgentSession()
   }, [])
 
   const handleVideoDeleted = () => {

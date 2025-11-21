@@ -9,12 +9,12 @@ agents:
     container_runtime: none
     source_path: C:\Users\natha\OneDrive\Desktop\Coding\Projects\Consulting\TwelveLabs\aws-strands
     aws:
-      execution_role: null
-      execution_role_auto_create: true
+      execution_role: arn:aws:iam::551588892732:role/AmazonBedrockAgentCoreSDKRuntime-us-east-1-d4f0bc5a29
+      execution_role_auto_create: false
       account: '551588892732'
       region: us-east-1
-      ecr_repository: null
-      ecr_auto_create: true
+      ecr_repository: 551588892732.dkr.ecr.us-east-1.amazonaws.com/bedrock-agentcore-agent
+      ecr_auto_create: false
       s3_path: null
       s3_auto_create: false
       network_configuration:
@@ -28,21 +28,21 @@ agents:
         idle_runtime_session_timeout: null
         max_lifetime: null
     bedrock_agentcore:
-      agent_id: null
-      agent_arn: null
-      agent_session_id: null
+      agent_id: agent-8RFQdxGEut
+      agent_arn: arn:aws:bedrock-agentcore:us-east-1:551588892732:runtime/agent-8RFQdxGEut
+      agent_session_id: ecfcbc5c-7a68-4c69-b89e-e24616cac3b1
     codebuild:
-      project_name: null
-      execution_role: null
-      source_bucket: null
+      project_name: bedrock-agentcore-agent-builder
+      execution_role: arn:aws:iam::551588892732:role/AmazonBedrockAgentCoreSDKCodeBuild-us-east-1-d4f0bc5a29
+      source_bucket: bedrock-agentcore-codebuild-sources-551588892732-us-east-1
     memory:
       mode: STM_ONLY
-      memory_id: null
-      memory_arn: null
-      memory_name: agent_memory
+      memory_id: agent_mem-26QH0099MR
+      memory_arn: arn:aws:bedrock-agentcore:us-east-1:551588892732:memory/agent_mem-26QH0099MR
+      memory_name: agent_mem
       event_expiry_days: 30
-      first_invoke_memory_check_done: false
-      was_created_by_toolkit: false
+      first_invoke_memory_check_done: true
+      was_created_by_toolkit: true
     authorizer_configuration: null
     request_header_configuration: null
     oauth_configuration: null

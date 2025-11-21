@@ -185,6 +185,48 @@ export default function AgentChat({ videoId }) {
         }
         setMessages(prev => [...prev, assistantMessage])
 
+        // Helper function to ensure proper spacing between chunks
+        // Fixes issue where agent pauses for tool use and resumes without spaces after periods
+        const ensureSpacing = (previousContent, newChunk) => {
+            if (!previousContent || !newChunk) {
+                return newChunk || ''
+            }
+            
+            // Trim the new chunk to check what it starts with
+            const trimmedChunk = newChunk.trim()
+            if (!trimmedChunk) {
+                return newChunk
+            }
+            
+            // Get the last character of previous content (ignoring trailing whitespace)
+            const trimmedPrevious = previousContent.trimEnd()
+            if (!trimmedPrevious) {
+                return newChunk
+            }
+            
+            const lastChar = trimmedPrevious[trimmedPrevious.length - 1]
+            const firstChar = trimmedChunk[0]
+            
+            // If previous ends with sentence punctuation (. ! ?) and new chunk starts with a letter, add space
+            if (/[.!?]/.test(lastChar) && /[a-zA-Z]/.test(firstChar)) {
+                return ' ' + newChunk
+            }
+            
+            // If previous doesn't end with whitespace and new chunk doesn't start with whitespace or punctuation, add space
+            const previousEndsWithSpace = /\s$/.test(previousContent)
+            const chunkStartsWithSpace = /^\s/.test(newChunk)
+            const chunkStartsWithPunctuation = /^[.,!?;:)]/.test(trimmedChunk)
+            
+            if (!previousEndsWithSpace && !chunkStartsWithSpace && !chunkStartsWithPunctuation) {
+                // Only add space if we're connecting words (not already separated)
+                if (/[a-zA-Z0-9]$/.test(trimmedPrevious) && /[a-zA-Z0-9]/.test(firstChar)) {
+                    return ' ' + newChunk
+                }
+            }
+            
+            return newChunk
+        }
+
         // Set up event listeners with proper closure over messageId
         const handleResponse = (event, chunk) => {
             // Only process if this chunk is for the current message
@@ -200,9 +242,11 @@ export default function AgentChat({ videoId }) {
                 const messageIndex = prev.findIndex(msg => msg.id === assistantMessageId)
                 if (messageIndex !== -1) {
                     const updated = [...prev]
+                    const previousContent = updated[messageIndex].content
+                    const spacedChunk = ensureSpacing(previousContent, chunk)
                     updated[messageIndex] = {
                         ...updated[messageIndex],
-                        content: updated[messageIndex].content + chunk
+                        content: previousContent + spacedChunk
                     }
                     return updated
                 }

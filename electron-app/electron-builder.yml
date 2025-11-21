@@ -1,5 +1,5 @@
-appId: com.electron.app
-productName: electron-app
+appId: com.twelvelabs.strands-agent
+productName: Strands Agent
 directories:
   buildResources: build
 files:
@@ -11,22 +11,49 @@ files:
 asarUnpack:
   - resources/**
 win:
-  executableName: electron-app
+  executableName: strands-agent
+  target:
+    - target: nsis
+      arch:
+        - x64
+        - ia32
+  icon: build/icon.ico  # Keep using .ico format for Windows (you can replace this file with TwelveLabs logo converted to .ico)
+  publisherName: TwelveLabs
+  # Completely disable code signing to prevent winCodeSign download
+  sign: null
+  verifyUpdateCodeSignature: false
+  signingHashAlgorithms: []  # Empty array prevents signing tool download
 nsis:
-  artifactName: ${name}-${version}-setup.${ext}
+  artifactName: ${productName}-${version}-setup.${ext}
   shortcutName: ${productName}
   uninstallDisplayName: ${productName}
   createDesktopShortcut: always
+  oneClick: false
+  allowToChangeInstallationDirectory: true
 mac:
+  category: public.app-category.productivity
+  target:
+    - target: dmg
+      arch:
+        - x64
+        - arm64
+  icon: build/icon.icns  # Keep using .icns format for macOS (you can replace this file with TwelveLabs logo converted to .icns)
   entitlementsInherit: build/entitlements.mac.plist
+  hardenedRuntime: true
+  gatekeeperAssess: false
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   notarize: false
+  # For production, set these environment variables:
+  # APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
+  # Then set notarize: true
 dmg:
-  artifactName: ${name}-${version}.${ext}
+  artifactName: ${productName}-${version}.${ext}
+  title: ${productName} ${version}
+  icon: build/icon.icns
 linux:
   target:
     - AppImage
@@ -37,8 +64,24 @@ linux:
 appImage:
   artifactName: ${name}-${version}.${ext}
 npmRebuild: false
+
+# Environment variables for production builds
+# Set these before building:
+# - APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID (for macOS notarization)
+# - CERTIFICATE_FILE, CERTIFICATE_PASSWORD (for Windows code signing)
+
 publish:
   provider: generic
   url: https://example.com/auto-updates
+  # For auto-updates, configure your update server URL above
+
 electronDownload:
   mirror: https://npmmirror.com/mirrors/electron/
+
+# Completely disable code signing to avoid Windows symlink permission issues
+# The error occurs because winCodeSign extraction requires admin privileges for symlinks
+# Setting CSC_LINK to empty string prevents electron-builder from downloading signing tools
+forceCodeSigning: false
+
+# Compression and optimization
+compression: maximum

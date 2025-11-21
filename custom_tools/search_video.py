@@ -275,7 +275,7 @@ def search_video(tool: ToolUse, **kwargs: Any) -> ToolResult:
 
         search_options = tool_input.get("search_options", ["visual", "audio"])
         group_by = tool_input.get("group_by", "clip")
-        threshold = tool_input.get("threshold", "medium")
+        threshold = tool_input.get("threshold", "low")
         page_limit = tool_input.get("page_limit", 10)
 
         # Initialize TwelveLabs client and perform search
@@ -289,13 +289,24 @@ def search_video(tool: ToolUse, **kwargs: Any) -> ToolResult:
             page_limit=page_limit,
         )
 
+        # Extract results from SyncPager object
+        # SyncPager has 'items' attribute containing the search results
+
+        results_list = []
+
+        for item in search_result:
+            results_list.append(item)
+
+        print(f"Results list: {results_list}")
+
         # Get total count
-        total_count = 0
+        total_count = len(results_list)
         if hasattr(search_result, "pool") and hasattr(search_result.pool, "total_count"):
             total_count = search_result.pool.total_count
+        elif hasattr(search_result, "total_count"):
+            total_count = search_result.total_count
 
         # Format results
-        results_list = list(search_result.data) if hasattr(search_result, "data") else []
         formatted_results = format_search_results(results_list, group_by, total_count)
 
         # Build response summary

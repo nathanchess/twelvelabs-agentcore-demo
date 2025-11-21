@@ -2,6 +2,8 @@ import { app, shell, BrowserWindow, ipcMain, protocol, dialog } from 'electron'
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { TwelveLabs } from 'twelvelabs-js'
+import { BedrockAgentRuntimeClient, CreateSessionCommand } from '@aws-sdk/client-bedrock-agent-runtime'
+import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand } from '@aws-sdk/client-bedrock-agentcore'
 
 import icon from '../../resources/icon.png?asset'
 import fs from 'fs';
@@ -13,6 +15,48 @@ import crypto from 'crypto';
 // App Constants
 const sessionTempDir = path.join(app.getPath('temp'), 'tl-video-agent-session');
 const videoMapPath = path.join(sessionTempDir, 'video-map.json');
+
+// In-memory session storage (cleared when app closes)
+let agentSessionId = null;
+
+// Create Bedrock Agent Runtime client for session management
+function createBedrockRuntimeClient() {
+  const config = {
+    region: 'us-east-1',
+  };
+  
+  // Only add credentials if both are provided
+  if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+    config.credentials = {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    };
+  }
+  // Otherwise, AWS SDK will use default credential provider chain
+  
+  return new BedrockAgentRuntimeClient(config);
+}
+
+// Create Bedrock Agent Core client for invoking agents
+function createBedrockAgentCoreClient() {
+  const config = {
+    region: 'us-east-1',
+  };
+  
+  // Only add credentials if both are provided
+  if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
+    config.credentials = {
+      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+    };
+  }
+  // Otherwise, AWS SDK will use default credential provider chain
+  
+  return new BedrockAgentCoreClient(config);
+}
+
+let runtimeClient = null; // For session management
+let agentCoreClient = null; // For agent invocation
 
 const ffmpegPath = require('@ffmpeg-installer/ffmpeg').path;
 const ffmpeg = require('fluent-ffmpeg')
@@ -162,10 +206,42 @@ async function _check_video_id(apiKey, videoId, indexId) {
       return false;
     }
   } catch (error) {
-    console.error('Error checking video ID:', error);
     return false;
   }
+}
 
+async function _create_agent_session() {
+  // Return existing session ID if available
+  if (agentSessionId) {
+    return agentSessionId;
+  }
+
+  try {
+    // Lazy initialization of runtime client for session management
+    if (!runtimeClient) {
+      runtimeClient = createBedrockRuntimeClient();
+    }
+    
+    const command = new CreateSessionCommand({})
+    const response = await runtimeClient.send(command)
+    
+    // Store session ID in memory (persists for app lifetime)
+    agentSessionId = response.sessionId;
+    console.log('Agent session created:', agentSessionId);
+    
+    return agentSessionId;
+  } catch (error) {
+    console.error('Error creating agent session:', error)
+    // Reset client on error so it can be recreated with potentially updated credentials
+    runtimeClient = null;
+    agentSessionId = null;
+    return null
+  }
+}
+
+function _get_agent_session() {
+  // Return current session ID without creating a new one
+  return agentSessionId;
 }
 
 app.whenReady().then(() => {
@@ -266,6 +342,14 @@ app.whenReady().then(() => {
     }
   })
 
+  ipcMain.handle('create-agent-session', async (event) => {
+    return await _create_agent_session()
+  })
+
+  ipcMain.handle('get-agent-session', async (event) => {
+    return _get_agent_session()
+  })
+
   ipcMain.handle('get-video-content', async (event, apiKey, hash) => {
 
     const videoMap = JSON.parse(await fsp.readFile(videoMapPath, 'utf8'));
@@ -302,6 +386,20 @@ app.whenReady().then(() => {
     Alongside answering questions you can also search the video for specific moments, or summarize the video.
     You can also send messages in a Slack channel, in provided the Slack bot token and app token.
     The Slack channel will likely have people that were in the video recording and you may be asked to send messages to them based on the prompt.
+    If specific name is mentioned to send message to in Slack, list our channel IDs and find the appropriate channel ID to send the private message to in Slack.
+    Try your best not to default to sending messages in a public channel, unless explicitly told to do so.
+
+    Use the following formatting guidelines when sending messages to Slack:
+
+    /********** START NEW SLACK FORMATTING INSTRUCTIONS **********/
+    
+    **CRITICAL: When you are asked to send a message or summary to Slack, you MUST format it using only Slack's 'mrkdwn' syntax, NOT standard Markdown.**
+    
+    * For **bold**, you MUST use single asterisks: *This is bold in Slack*
+    * For bullet points, you MUST use the • character or a single asterisk (*).
+    * Do NOT use double asterisks (**bold**) or hashes (### Header). Slack will display those characters literally.
+    
+    /********** END NEW SLACK FORMATTING INSTRUCTIONS **********/
 
     The user will provide you with a video ID, representing the video ID indexed in TwelveLabs. You can use this video ID to analyze the video.
     
@@ -321,8 +419,16 @@ app.whenReady().then(() => {
     Slack Bot Token: ${slack_bot_token}
     Slack App Token: ${slack_app_token}
 
+    You must set the API keys and tokens with the following names:
+    1. SLACK_BOT_TOKEN
+    2. SLACK_APP_TOKEN
+    3. TWELVELABS_API_KEY
+
+    Varying from the above names will result in errors and failures to perform actions.
+
     Automatically set API keys and tokens if provided. No need for confirmation. Do NOT write the API keys and tokens to the response, just handle them internally.
     If a key action is required that requires a certain key or token, please ask the user to navigate to the "Account Information" page to set the key or token.
+    You should explicitly state it the API keys and tokens are set, if properly set and provided.
 
     DO NOT write the API keys and tokens to the response, just handle them internally.
     DO NOT take extra actions, especially in regards to Slack or TwelveLabs. Do only what you are told to do and clarify if needed with the user.
@@ -331,18 +437,172 @@ app.whenReady().then(() => {
     ${prompt}
     `
 
-    let response;
-
     try {
-      response = await fetch('http://localhost:8080/invocations', {
-        method: 'POST',
-        body: JSON.stringify({
-          prompt: prompt_template
-        }),
-        headers: {
-          'Content-Type': 'application/json',
+      // Ensure we have a session ID
+      if (!agentSessionId) {
+        await _create_agent_session();
+        if (!agentSessionId) {
+          throw new Error('Failed to create agent session');
         }
+      }
+
+      // Ensure Agent Core client is initialized
+      if (!agentCoreClient) {
+        agentCoreClient = createBedrockAgentCoreClient();
+      }
+
+      // Use InvokeAgentRuntimeCommand with BedrockAgentCoreClient
+      // The agent.py expects payload.get("prompt"), so we need to send JSON
+      const payloadJson = JSON.stringify({
+        prompt: prompt_template
+      });
+      
+      const encoder = new TextEncoder();
+      const command = new InvokeAgentRuntimeCommand({
+        runtimeSessionId: agentSessionId,
+        agentRuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:551588892732:runtime/agent-8RFQdxGEut",
+        qualifier: "DEFAULT", // Optional
+        payload: encoder.encode(payloadJson) // Required: Uint8Array of JSON string
       })
+      
+      console.log('Invoking agent with session:', agentSessionId);
+      console.log('Input text preview:', prompt_template.substring(0, 200) + '...');
+
+      const response = await agentCoreClient.send(command)
+
+      // Transform response to string
+      if (response.response && typeof response.response.transformToString === 'function') {
+        const textResponse = await response.response.transformToString();
+        
+        // Parse SSE format: data: "text"
+        // Preserve spacing by not trimming lines - only skip truly empty lines
+        const lines = textResponse.split('\n');
+        for (const line of lines) {
+          // Only skip completely empty lines (no content at all)
+          if (!line || line.length === 0) continue;
+          
+          // Check for SSE format without trimming (to preserve leading spaces)
+          if (line.trim().startsWith('data: ')) {
+            // Find where 'data: ' starts (accounting for leading whitespace)
+            const dataIndex = line.indexOf('data: ');
+            if (dataIndex !== -1) {
+              const data = line.substring(dataIndex + 6); // Remove 'data: ' prefix, preserve any leading whitespace before it
+              
+              // Parse JSON-encoded string
+              try {
+                const parsed = JSON.parse(data.trim()); // Only trim for JSON parsing
+                if (typeof parsed === 'string') {
+                  // Send the decoded text (preserve original spacing)
+                  event.sender.send('prompt-strands-agent-response', parsed);
+                } else {
+                  // If it's an object, try to extract text
+                  event.sender.send('prompt-strands-agent-response', parsed.text || parsed.content || JSON.stringify(parsed));
+                }
+              } catch (e) {
+                // If not valid JSON, remove quotes if present and send cleaned text
+                let cleaned = data.trim(); // Trim only for quote removal
+                if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+                  cleaned = cleaned.slice(1, -1);
+                }
+                // Unescape any escaped characters
+                cleaned = cleaned.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                event.sender.send('prompt-strands-agent-response', cleaned);
+              }
+            }
+          } else if (!line.trim().startsWith(':')) {
+            // Non-SSE format line, send as-is (preserve spacing)
+            event.sender.send('prompt-strands-agent-response', line);
+          }
+        }
+        
+        event.sender.send('prompt-strands-agent-complete');
+      } else {
+        // Handle streaming response if transformToString is not available
+        const reader = response.response.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let buffer = '';
+
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            
+            if (done) {
+              break;
+            }
+
+            const chunk = decoder.decode(value, { stream: true });
+            buffer += chunk;
+            
+            // Process complete lines (SSE format)
+            // Preserve spacing by not trimming lines unnecessarily
+            let lastNewlineIndex = buffer.lastIndexOf('\n');
+            
+            if (lastNewlineIndex !== -1) {
+              const completeLines = buffer.substring(0, lastNewlineIndex + 1);
+              buffer = buffer.substring(lastNewlineIndex + 1);
+              
+              const lines = completeLines.split('\n');
+              for (const line of lines) {
+                // Only skip completely empty lines
+                if (!line || line.length === 0) continue;
+                
+                // Check for SSE format without trimming (to preserve leading spaces)
+                if (line.trim().startsWith('data: ')) {
+                  const dataIndex = line.indexOf('data: ');
+                  if (dataIndex !== -1) {
+                    const data = line.substring(dataIndex + 6);
+                    try {
+                      const parsed = JSON.parse(data.trim()); // Only trim for JSON parsing
+                      event.sender.send('prompt-strands-agent-response', typeof parsed === 'string' ? parsed : (parsed.text || parsed.content || JSON.stringify(parsed)));
+                    } catch (e) {
+                      let cleaned = data.trim();
+                      if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+                        cleaned = cleaned.slice(1, -1);
+                      }
+                      cleaned = cleaned.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                      event.sender.send('prompt-strands-agent-response', cleaned);
+                    }
+                  }
+                } else if (!line.trim().startsWith(':')) {
+                  // Non-SSE format line, send as-is (preserve spacing)
+                  event.sender.send('prompt-strands-agent-response', line);
+                }
+              }
+            }
+          }
+
+          // Process any remaining buffer (preserve spacing)
+          if (buffer && buffer.length > 0) {
+            if (buffer.trim().startsWith('data: ')) {
+              const dataIndex = buffer.indexOf('data: ');
+              if (dataIndex !== -1) {
+                const data = buffer.substring(dataIndex + 6);
+                try {
+                  const parsed = JSON.parse(data.trim()); // Only trim for JSON parsing
+                  event.sender.send('prompt-strands-agent-response', typeof parsed === 'string' ? parsed : (parsed.text || parsed.content || JSON.stringify(parsed)));
+                } catch (e) {
+                  let cleaned = data.trim();
+                  if (cleaned.startsWith('"') && cleaned.endsWith('"')) {
+                    cleaned = cleaned.slice(1, -1);
+                  }
+                  cleaned = cleaned.replace(/\\n/g, '\n').replace(/\\"/g, '"').replace(/\\\\/g, '\\');
+                  event.sender.send('prompt-strands-agent-response', cleaned);
+                }
+              }
+            } else if (!buffer.trim().startsWith(':')) {
+              // Non-SSE format, send as-is (preserve spacing)
+              event.sender.send('prompt-strands-agent-response', buffer);
+            }
+          }
+          
+          event.sender.send('prompt-strands-agent-complete');
+        } catch (streamError) {
+          console.error('Error reading response stream:', streamError);
+          throw streamError;
+        }
+      }
+
+      /*
 
       if (!response.ok) {
         throw new Error('Failed to prompt strands agent');
@@ -432,18 +692,23 @@ app.whenReady().then(() => {
             event.sender.send('prompt-strands-agent-response', trimmedLine);
           }
         }
+          */
 
         event.sender.send('prompt-strands-agent-complete');
 
-      } catch (error) {
-        console.error('Error reading strands agent response:', error);
-        event.sender.send('prompt-strands-agent-error', error.message);
-        throw error;
-      }
 
     } catch (error) {
       console.error('Error prompting strands agent:', error);
-      event.sender.send('prompt-strands-agent-error', error.message);
+      console.error('Error details:', {
+        name: error.name,
+        message: error.message,
+        code: error.code,
+        statusCode: error.$metadata?.httpStatusCode,
+        requestId: error.$metadata?.requestId,
+        fault: error.$fault,
+        stack: error.stack
+      });
+      event.sender.send('prompt-strands-agent-error', error.message || 'Unknown error occurred');
       return {
         success: false,
         error: error.message

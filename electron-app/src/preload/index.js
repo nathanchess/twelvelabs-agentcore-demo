@@ -22,6 +22,8 @@ const api = {
   uploadVideo: (filePath, targetFileName) => electronAPI.ipcRenderer.invoke('upload-video', filePath, targetFileName),
   showOpenDialog: (options) => electronAPI.ipcRenderer.invoke('show-open-dialog', options),
   deleteVideo: (apiKey, filePath) => electronAPI.ipcRenderer.invoke('delete-video', apiKey, filePath),
+  createAgentSession: () => electronAPI.ipcRenderer.invoke('create-agent-session'),
+  getAgentSession: () => electronAPI.ipcRenderer.invoke('get-agent-session'),
 }
 
 // Use `contextBridge` APIs to expose Electron APIs to
