@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'
 
-export default function AccountInformation() {
+export default function AccountInformation({ onKeysUpdated }) {
     const [twelveLabsApiKey, setTwelveLabsApiKey] = useState('')
     const [slackBotToken, setSlackBotToken] = useState('')
     const [slackAppToken, setSlackAppToken] = useState('')
@@ -17,12 +17,24 @@ export default function AccountInformation() {
         setSlackAppToken(savedSlackAppToken)
     }, [])
 
-    const handleSave = () => {
+    const handleSave = async () => {
         localStorage.setItem('TWELVELABS_API_KEY', twelveLabsApiKey)
         localStorage.setItem('SLACK_BOT_TOKEN', slackBotToken)
         localStorage.setItem('SLACK_APP_TOKEN', slackAppToken)
         
         setSaveStatus('Settings saved successfully!')
+        
+        // Send updated environment variables to the agent
+        if (onKeysUpdated) {
+            try {
+                await onKeysUpdated()
+                console.log('Environment variables sent to agent after update')
+            } catch (error) {
+                console.error('Error sending environment variables:', error)
+                setSaveStatus('Settings saved, but failed to update agent. Please restart the app.')
+            }
+        }
+        
         setTimeout(() => setSaveStatus(''), 3000)
     }
 

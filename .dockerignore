@@ -1,6 +1,9 @@
 # Build artifacts
 build/
 dist/
+electron-app/dist/
+electron-app/node_modules/
+electron-app/out/
 *.egg-info/
 *.egg
 
@@ -58,8 +61,17 @@ docs/
 # Project specific
 tests/
 
-# Bedrock AgentCore specific - keep config but exclude runtime files
-.bedrock_agentcore.yaml
+# Electron app (not needed for AgentCore)
+# Exclude entire electron-app directory and all subdirectories
+electron-app/
+electron-app/**
+**/electron-app/**
+**/electron-app/dist/**
+**/electron-app/node_modules/**
+**/electron-app/out/**
+
+# Bedrock AgentCore specific - exclude runtime files but keep config
+# Note: .bedrock_agentcore.yaml should NOT be excluded - it's needed for config
 .dockerignore
 .bedrock_agentcore/
 

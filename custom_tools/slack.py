@@ -149,6 +149,38 @@ SLACK_SYSTEM_PROMPT = """
 You are an AI assistant integrated with a Slack workspace. Important guidelines:
 
 ═══════════════════════════════════════════════════════════════════════════════
+CRITICAL: SLACK AUTO-REPLY BEHAVIOR (MUST FOLLOW)
+═══════════════════════════════════════════════════════════════════════════════
+
+**WHEN RESPONDING TO SLACK MESSAGES (auto-reply mode):**
+
+⚠️ **ABSOLUTE RULE**: Complete ALL tool calls FIRST, then send ONE final message with complete results.
+
+❌ **NEVER DO THIS**:
+- Send "I'm working on it..." or "Let me check..." messages
+- Send intermediate status updates
+- Send multiple messages during tool execution
+- Send a message after each tool call
+- Send messages like "I'm setting up..." or "This might take a moment..."
+
+✅ **ALWAYS DO THIS**:
+- Execute ALL necessary tools silently (get_video_index, search_video, chat_video, etc.)
+- Gather ALL information needed
+- Process ALL results
+- Compose ONE complete message with all findings
+- Send that ONE message using slack_send_message
+
+**WORKFLOW**: Tools → Analysis → ONE Complete Message → Done
+
+**EXAMPLE**: If asked "Find when Eric Johnson spoke":
+1. Use get_video_index to find the video
+2. Use search_video to find Eric Johnson's speaking moments
+3. Process all results
+4. Send ONE message: "Eric Johnson spoke at these times: [complete list]"
+
+**REMEMBER**: The user expects ONE complete answer, not a conversation. Complete your work silently, then deliver the final result.
+
+═══════════════════════════════════════════════════════════════════════════════
 CRITICAL: SLACK FORMATTING RULES (MUST FOLLOW FOR ALL MESSAGES)
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -408,6 +440,20 @@ class SocketModeHandler:
             logger.info("Skipping own message")
             return
 
+        channel_id = event.get("channel")
+        text = event.get("text", "")
+        user = event.get("user")
+        ts = event.get("ts")
+
+        logger.info(f"Processing message: {text}")
+        logger.info(f"Channel ID: {channel_id}")
+        logger.info(f"User: {user}")
+        logger.info(f"Timestamp: {ts}")
+
+        if self.agent is None:
+            logger.error("No agent found")
+            return
+
         tools = list(self.agent.tool_registry.registry.values())
         trace_attributes = self.agent.trace_attributes
 
@@ -419,11 +465,6 @@ class SocketModeHandler:
             callback_handler=self.agent.callback_handler,
             trace_attributes=trace_attributes,
         )
-
-        channel_id = event.get("channel")
-        text = event.get("text", "")
-        user = event.get("user")
-        ts = event.get("ts")
 
         # Add thinking reaction
         try:
@@ -440,7 +481,7 @@ class SocketModeHandler:
         # Process with agent
         try:
             # Check if we should process this message (based on environment tag)
-            listen_only_tag = os.environ.get("STRANDS_SLACK_LISTEN_ONLY_TAG")
+            listen_only_tag = os.environ.get("STRANDS_SLACK_LISTEN_ONLY_TAG", "")
             if listen_only_tag:
                 if listen_only_tag not in text:
                     logger.info(f"Skipping message - does not contain tag: {listen_only_tag}")
@@ -451,15 +492,20 @@ class SocketModeHandler:
                 f"{SLACK_SYSTEM_PROMPT}\n\nEvent Context:\nCurrent: {json.dumps(event)}{event_context}"
             )
 
+            logger.info(f"Agent system prompt: {agent.system_prompt}")
+
             # Process with agent
             agent_prompt = f"[Channel: {channel_id}] User {user} says: {text}"
             response = agent(agent_prompt)
+            
+            logger.info(f"Response: {response}")
 
             # If we have a valid response, send it back to Slack
             if response and str(response).strip():
                 if client:
+                    logger.info(f"Sending response to Slack: {response}")
                     # Check if auto-reply is enabled
-                    auto_reply_enabled = os.getenv("STRANDS_SLACK_AUTO_REPLY", "false").lower() == "true"
+                    auto_reply_enabled = os.getenv("STRANDS_SLACK_AUTO_REPLY", "true").lower() == "true"
                     if auto_reply_enabled:
                         client.chat_postMessage(
                             channel=channel_id,
@@ -486,7 +532,7 @@ class SocketModeHandler:
                     client.reactions_add(name="x", channel=channel_id, timestamp=ts)
 
                     # Only send error message if auto-reply is enabled
-                    if os.getenv("STRANDS_SLACK_AUTO_REPLY", "false").lower() == "true":
+                    if os.getenv("STRANDS_SLACK_AUTO_REPLY", "true").lower() == "true":
                         client.chat_postMessage(
                             channel=channel_id,
                             text=f"Error processing message: {str(e)}",
@@ -521,7 +567,7 @@ class SocketModeHandler:
                 response = agent(interaction_text)
 
                 # Only send a response if auto-reply is enabled
-                if os.getenv("STRANDS_SLACK_AUTO_REPLY", "false").lower() == "true":
+                if os.getenv("STRANDS_SLACK_AUTO_REPLY", "true").lower() == "true":
                     client.chat_postMessage(
                         channel=channel_id,
                         text=str(response).strip(),

@@ -49,10 +49,13 @@ def get_video_index(*args, **kwargs) -> dict:
 
         twelvelabs_client = TwelveLabs(api_key=os.getenv("TWELVELABS_API_KEY"))
 
+        # Use default index name if not set
+        index_name = os.getenv('TWELVELABS_INDEX_NAME', 'strands-dev')
+
         existing_indexes = twelvelabs_client.indexes.list()
 
         for index in existing_indexes.items:
-            if index.index_name == os.getenv('TWELVELABS_INDEX_NAME'):
+            if index.index_name == index_name:
                 os.environ['TWELVELABS_MARENGO_INDEX_ID'] = index.id
                 os.environ['TWELVELABS_PEGASUS_INDEX_ID'] = index.id
 
@@ -63,7 +66,7 @@ def get_video_index(*args, **kwargs) -> dict:
                     "content": [{"text": success_msg}],
                 }
         
-        index = twelvelabs_client.indexes.create(index_name=os.getenv('TWELVELABS_INDEX_NAME'), models=[
+        index = twelvelabs_client.indexes.create(index_name=index_name, models=[
             IndexesCreateRequestModelsItem(model_name='marengo2.7', model_options=['visual', 'audio']),
             IndexesCreateRequestModelsItem(model_name='pegasus1.2', model_options=['visual', 'audio']),
         ])

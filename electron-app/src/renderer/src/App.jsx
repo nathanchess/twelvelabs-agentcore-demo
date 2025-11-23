@@ -5,9 +5,6 @@ import AccountInformation from './components/AccountInformation'
 import VideoPlayer from './components/VideoPlayer'
 import { useEffect, useState } from 'react'
 
-// Track if env variables have been sent (persists across component remounts)
-let envVariablesSent = false
-
 function App() {
 
   const [videos, setVideos] = useState([])
@@ -43,25 +40,26 @@ function App() {
   }
 
   const sendEnvVariables = async () => {
-    // Only send once on app load
-    if (envVariablesSent) {
-      return
-    }
-    
-    envVariablesSent = true
-    
     const twelveLabsApiKey = localStorage.getItem('TWELVELABS_API_KEY')
     const slack_bot_token = localStorage.getItem('SLACK_BOT_TOKEN')
     const slack_app_token = localStorage.getItem('SLACK_APP_TOKEN')
 
-    await window.api.promptStrandsAgent(
-      "Send the environment variables to the agent and enable socket mode for Slack auto reply",
-      twelveLabsApiKey,
-      slack_bot_token,
-      slack_app_token,
-      [],
-      ""
-    )
+    console.log('Sending environment variables to agent...')
+    
+    try {
+      await window.api.promptStrandsAgent(
+        "Send the environment variables to the agent and enable socket mode for Slack auto reply",
+        twelveLabsApiKey,
+        slack_bot_token,
+        slack_app_token,
+        [],
+        "",
+        false
+      )
+      console.log('Environment variables sent successfully')
+    } catch (error) {
+      console.error('Error sending environment variables:', error)
+    }
   }
 
   const createAgentSession = async () => {
@@ -85,7 +83,7 @@ function App() {
       <SideBar currentPage={currentPage} setCurrentPage={setCurrentPage} />
       <div className="app-main-content">
         {currentPage === 'Video Library' && <VideoDashboard videoMetadata={videos} setCurrentPage={setCurrentPage} currentPage={currentPage} onVideoDeleted={handleVideoDeleted} />}
-        {currentPage === 'Account Information' && <AccountInformation />}
+        {currentPage === 'Account Information' && <AccountInformation onKeysUpdated={sendEnvVariables} />}
         {currentPage.startsWith('video/') && <VideoPlayer hash={currentPage.split('/')[1]} />}
         <Versions></Versions>
       </div>

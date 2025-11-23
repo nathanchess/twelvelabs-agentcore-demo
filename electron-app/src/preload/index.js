@@ -9,7 +9,7 @@ const api = {
   getVideoContent: (apiKey, hash) => electronAPI.ipcRenderer.invoke('get-video-content', apiKey, hash),
   getVideoHash: (filepath) => electronAPI.ipcRenderer.invoke('get-video-hash', filepath),
   getVideoGist: (apiKey, videoId, indexId) => electronAPI.ipcRenderer.invoke('get-video-gist', apiKey, videoId, indexId),
-  promptStrandsAgent: (prompt, twelveLabsApiKey, slack_bot_token, slack_app_token, chat_history, videoId) => electronAPI.ipcRenderer.invoke('prompt-strands-agent', prompt, twelveLabsApiKey, slack_bot_token, slack_app_token, chat_history, videoId),
+  promptStrandsAgent: (prompt, twelveLabsApiKey, slack_bot_token, slack_app_token, chat_history, videoId, streamBackToUser = true) => electronAPI.ipcRenderer.invoke('prompt-strands-agent', prompt, twelveLabsApiKey, slack_bot_token, slack_app_token, chat_history, videoId, streamBackToUser),
   promptStrandsAgentComplete: (callback) => electronAPI.ipcRenderer.on('prompt-strands-agent-complete', (event) => {
     callback()
   }),

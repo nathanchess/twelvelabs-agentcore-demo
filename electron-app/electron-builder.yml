@@ -10,6 +10,12 @@ files:
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
 asarUnpack:
   - resources/**
+  - "**/node_modules/@ffmpeg-installer/**/*"
+  - "**/node_modules/@ffmpeg-installer/win32-x64/**/*"
+  - "**/node_modules/@ffmpeg-installer/win32-ia32/**/*"
+  - "**/node_modules/@ffmpeg-installer/darwin-x64/**/*"
+  - "**/node_modules/@ffmpeg-installer/darwin-arm64/**/*"
+  - "**/node_modules/@ffmpeg-installer/linux-x64/**/*"
 win:
   executableName: strands-agent
   target:

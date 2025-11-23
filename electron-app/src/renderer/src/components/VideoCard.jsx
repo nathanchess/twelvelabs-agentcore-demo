@@ -135,11 +135,31 @@ export default function VideoCard({ thumbnail, title, date, filepath, onHover, s
             onClick={handleClick}
         >
             <div className="video-card-image-wrapper">
+                {thumbnail ? (
                 <img 
                     src={thumbnail} 
                     alt={title} 
                     className={`video-card-image ${isHovered ? 'video-card-image-hover' : ''} ${isIndexing ? 'video-card-image-indexing' : ''}`}
-                />
+                        onError={(e) => {
+                            console.error('=== IMAGE LOAD ERROR ===');
+                            console.error('Thumbnail URL:', thumbnail);
+                            console.error('Image src:', e.target?.src);
+                            console.error('Image currentSrc:', e.target?.currentSrc);
+                            console.error('Error event:', e);
+                            console.error('Error type:', e.type);
+                            // Try to get more info about the error
+                            if (e.target) {
+                                console.error('Image naturalWidth:', e.target.naturalWidth);
+                                console.error('Image naturalHeight:', e.target.naturalHeight);
+                                console.error('Image complete:', e.target.complete);
+                            }
+                        }}
+                    />
+                ) : (
+                    <div className="video-card-image video-card-image-placeholder">
+                        <span>No thumbnail</span>
+                    </div>
+                )}
                 {isIndexing && (
                     <div className="video-card-indexing-overlay">
                         <div className="video-card-indexing-content">
