@@ -33,8 +33,9 @@ jobs:
           # CRITICAL: electron-builder uses SYSTEM Perl (/usr/bin/perl 5.34), not Homebrew Perl
           # Install cpanminus first
           brew install cpanminus
-          # Install to Homebrew Perl location first (cpanm default)
-          cpanm --notest Mac::Finder::DSStore
+          # Install required modules to Homebrew Perl location first (cpanm default)
+          # Mac::Memory is a dependency that electron-builder's DMG script needs
+          cpanm --notest Mac::Finder::DSStore Mac::Memory Mac::PropertyList || true
           # Find where it was installed (Homebrew Perl location)
           # Use find to locate the module
           HOMEBREW_MODULE_PATH=$(find /opt/homebrew -name "DSStore.pm" -path "*/Mac/Finder/*" 2>/dev/null | head -1)
@@ -62,8 +63,22 @@ jobs:
             find /opt/homebrew -name "DSStore.pm" 2>/dev/null || true
             exit 1
           fi
+          # Also copy Mac::Memory if it was installed
+          MEMORY_PATH=$(find /opt/homebrew -name "Memory.pm" -path "*/Mac/*" 2>/dev/null | head -1)
+          if [ -n "$MEMORY_PATH" ] && [ -f "$MEMORY_PATH" ]; then
+            echo "Found Mac::Memory at: $MEMORY_PATH"
+            sudo mkdir -p /Library/Perl/5.34/Mac
+            sudo cp "$MEMORY_PATH" /Library/Perl/5.34/Mac/Memory.pm
+            # Copy directory contents if needed
+            MEMORY_DIR=$(dirname "$MEMORY_PATH")
+            if [ -d "$MEMORY_DIR" ] && [ "$MEMORY_DIR" != "." ]; then
+              sudo cp -r "$MEMORY_DIR"/* /Library/Perl/5.34/Mac/ 2>/dev/null || true
+            fi
+            echo "Mac::Memory copied to system Perl location"
+          fi
           # Verify using SYSTEM Perl (what electron-builder uses)
-          /usr/bin/perl -MMac::Finder::DSStore -e 'print "Module verified in system Perl\n"'
+          /usr/bin/perl -MMac::Finder::DSStore -e 'print "Mac::Finder::DSStore verified\n"'
+          /usr/bin/perl -MMac::Memory -e 'print "Mac::Memory verified\n"' 2>/dev/null || echo "Note: Mac::Memory may not be needed"
       
       - name: Build app
         working-directory: electron-app
