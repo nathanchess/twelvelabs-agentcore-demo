@@ -33,13 +33,22 @@ jobs:
           # CRITICAL: electron-builder uses SYSTEM Perl (/usr/bin/perl 5.34), not Homebrew Perl
           # Install cpanminus first
           brew install cpanminus
-          # Force cpanm to use SYSTEM Perl and install to system Perl location
-          # Set PERL to system Perl and PERL5LIB to system Perl paths
-          export PERL=/usr/bin/perl
-          export PERL5LIB=/Library/Perl/5.34:/Library/Perl/5.34/darwin-thread-multi-2level
-          # Install using system Perl explicitly
-          sudo -E cpanm --notest -l /Library/Perl/5.34 Mac::Finder::DSStore || \
-          sudo /usr/bin/perl $(which cpanm) --notest Mac::Finder::DSStore
+          # Install to Homebrew Perl location first (cpanm default)
+          cpanm --notest Mac::Finder::DSStore
+          # Find where it was installed (Homebrew Perl location)
+          HOMEBREW_PERL_MODULE=$(/opt/homebrew/bin/perl -MFile::Spec -e 'print File::Spec->catfile(@INC[0], "Mac", "Finder", "DSStore.pm")' 2>/dev/null || echo "")
+          if [ -f "$HOMEBREW_PERL_MODULE" ]; then
+            echo "Found module at: $HOMEBREW_PERL_MODULE"
+            # Create system Perl directory structure
+            sudo mkdir -p /Library/Perl/5.34/Mac/Finder
+            # Copy the module to system Perl location
+            sudo cp "$HOMEBREW_PERL_MODULE" /Library/Perl/5.34/Mac/Finder/DSStore.pm
+            # Also copy any other related files
+            HOMEBREW_MODULE_DIR=$(dirname "$HOMEBREW_PERL_MODULE")
+            if [ -d "$HOMEBREW_MODULE_DIR" ]; then
+              sudo cp -r "$HOMEBREW_MODULE_DIR"/* /Library/Perl/5.34/Mac/Finder/ 2>/dev/null || true
+            fi
+          fi
           # Verify using SYSTEM Perl (what electron-builder uses)
           /usr/bin/perl -MMac::Finder::DSStore -e 'print "Module verified in system Perl\n"'
       
