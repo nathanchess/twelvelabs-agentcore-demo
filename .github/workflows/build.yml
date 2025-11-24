@@ -30,12 +30,15 @@ jobs:
       - name: Install Mac::Finder::DSStore Perl module (macOS only)
         if: matrix.os == 'macos-latest'
         run: |
-          # Install cpanminus using Homebrew (pre-installed on macos-latest runners)
-          # This module is required by electron-builder to customize DMG files
-          # Even with minimal DMG config, electron-builder customizes when building multiple archs
-          brew install cpanminus
-          # Install the required Perl module system-wide (electron-builder needs it in system Perl)
-          sudo cpanm --notest Mac::Finder::DSStore
+          # Use CPAN directly to install to system Perl location
+          # This ensures the module goes to /Library/Perl where electron-builder expects it
+          echo "yes" | sudo cpan -i Mac::Finder::DSStore
+          # Verify the module is accessible from system Perl
+          perl -MMac::Finder::DSStore -e 'print "Module verified\n"' || {
+            echo "Warning: Module verification failed"
+            # Try to find where it was installed
+            find /Library/Perl /usr/local/lib/perl5 -name "DSStore.pm" 2>/dev/null || true
+          }
       
       - name: Build app
         working-directory: electron-app
