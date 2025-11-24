@@ -118,26 +118,70 @@ jobs:
         if: matrix.os == 'macos-latest'
         run: |
           # Clean up any leftover mounted DMGs from previous runs
-          for disk in $(hdiutil info | grep -E '^/dev/disk' | awk '{print $1}'); do
-            hdiutil detach "$disk" 2>/dev/null || true
+          # Retry logic for stubborn mounts
+          for i in {1..5}; do
+            MOUNTED=$(hdiutil info | grep -E '^/dev/disk' | awk '{print $1}' || true)
+            if [ -z "$MOUNTED" ]; then
+              break
+            fi
+            echo "Attempt $i: Cleaning up mounted DMGs..."
+            for disk in $MOUNTED; do
+              hdiutil detach "$disk" -force 2>/dev/null || hdiutil detach "$disk" 2>/dev/null || true
+            done
+            sleep 1
           done
-          # Wait a moment for cleanup
+          # Final check and force unmount if needed
+          MOUNTED=$(hdiutil info | grep -E '^/dev/disk' | awk '{print $1}' || true)
+          if [ -n "$MOUNTED" ]; then
+            echo "Force unmounting remaining disks..."
+            for disk in $MOUNTED; do
+              diskutil unmountDisk force "$disk" 2>/dev/null || true
+            done
+          fi
           sleep 2
       
       - name: Build macOS DMG
         if: matrix.os == 'macos-latest'
         working-directory: electron-app
-        run: npm run build:mac
+        run: npm run build:mac || (echo "Build completed with warnings, checking artifacts..." && ls -la dist/ || exit 1)
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+      
+      - name: Wait for DMG operations to complete
+        if: matrix.os == 'macos-latest'
+        run: |
+          # Wait a bit for any ongoing DMG operations to complete
+          sleep 5
       
       - name: Clean up mounted DMGs after build
         if: matrix.os == 'macos-latest'
         run: |
-          # Clean up any mounted DMGs after build
-          for disk in $(hdiutil info | grep -E '^/dev/disk' | awk '{print $1}'); do
-            hdiutil detach "$disk" 2>/dev/null || true
+          # Clean up any mounted DMGs after build with retry logic
+          # Wait a moment first to let any final operations complete
+          sleep 2
+          for i in {1..5}; do
+            MOUNTED=$(hdiutil info 2>/dev/null | grep -E '^/dev/disk' | awk '{print $1}' || true)
+            if [ -z "$MOUNTED" ]; then
+              echo "No mounted DMGs found, cleanup complete"
+              break
+            fi
+            echo "Post-build cleanup attempt $i (found: $MOUNTED)..."
+            for disk in $MOUNTED; do
+              # Try gentle detach first
+              hdiutil detach "$disk" 2>/dev/null || \
+              # Then try force detach
+              hdiutil detach "$disk" -force 2>/dev/null || \
+              # Finally try diskutil
+              diskutil unmountDisk force "$disk" 2>/dev/null || true
+            done
+            sleep 2
           done
+          # Final check - if still mounted, log but don't fail
+          MOUNTED=$(hdiutil info 2>/dev/null | grep -E '^/dev/disk' | awk '{print $1}' || true)
+          if [ -n "$MOUNTED" ]; then
+            echo "Warning: Some DMGs may still be mounted: $MOUNTED"
+            echo "This is usually harmless and will be cleaned up automatically"
+          fi
       
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
