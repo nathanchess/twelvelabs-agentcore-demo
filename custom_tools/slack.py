@@ -136,49 +136,23 @@ from strands import Agent, tool
 
 # Configure logging
 # Set up logging to output to console if not already configured
+# CloudWatch captures stdout/stderr from containers, so we ensure logging goes there
+import sys
 if not logging.getLogger().handlers:
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        datefmt='%Y-%m-%d %H:%M:%S'
+        datefmt='%Y-%m-%d %H:%M:%S',
+        stream=sys.stdout,  # Explicitly output to stdout for CloudWatch
+        force=True  # Override any existing configuration
     )
 logger = logging.getLogger(__name__)
+# Ensure logger outputs to stdout for CloudWatch visibility
+logger.setLevel(logging.INFO)
 
 # System prompt for Slack communications
 SLACK_SYSTEM_PROMPT = """
 You are an AI assistant integrated with a Slack workspace. Important guidelines:
-
-═══════════════════════════════════════════════════════════════════════════════
-CRITICAL: SLACK AUTO-REPLY BEHAVIOR (MUST FOLLOW)
-═══════════════════════════════════════════════════════════════════════════════
-
-**WHEN RESPONDING TO SLACK MESSAGES (auto-reply mode):**
-
-⚠️ **ABSOLUTE RULE**: Complete ALL tool calls FIRST, then send ONE final message with complete results.
-
-❌ **NEVER DO THIS**:
-- Send "I'm working on it..." or "Let me check..." messages
-- Send intermediate status updates
-- Send multiple messages during tool execution
-- Send a message after each tool call
-- Send messages like "I'm setting up..." or "This might take a moment..."
-
-✅ **ALWAYS DO THIS**:
-- Execute ALL necessary tools silently (get_video_index, search_video, chat_video, etc.)
-- Gather ALL information needed
-- Process ALL results
-- Compose ONE complete message with all findings
-- Send that ONE message using slack_send_message
-
-**WORKFLOW**: Tools → Analysis → ONE Complete Message → Done
-
-**EXAMPLE**: If asked "Find when Eric Johnson spoke":
-1. Use get_video_index to find the video
-2. Use search_video to find Eric Johnson's speaking moments
-3. Process all results
-4. Send ONE message: "Eric Johnson spoke at these times: [complete list]"
-
-**REMEMBER**: The user expects ONE complete answer, not a conversation. Complete your work silently, then deliver the final result.
 
 ═══════════════════════════════════════════════════════════════════════════════
 CRITICAL: SLACK FORMATTING RULES (MUST FOLLOW FOR ALL MESSAGES)
@@ -231,6 +205,7 @@ OTHER FORMATTING:
    - Use emoji reactions as appropriate signals
    - Follow communication priority: Speaking/Audio > Text speaking > Images > Plain text > Reactions
    - When possible, prioritize sending audio messages over other forms of communication
+   - If you provide any timestamps, you MUST also upload the video file within your Slack message so the user can watch via. the fetch_video_url tool.
 
 Use slack_send_message tool to communicate back. Remember: ALWAYS use single asterisks (*text*) for bold, NEVER double asterisks (**text**).
 """  # noqa: E501
@@ -356,6 +331,7 @@ class SocketModeHandler:
         self.is_connected = False
         self.agent = None
 
+
     def _setup_client(self):
         """Set up the socket client if not already initialized."""
         if socket_client is None:
@@ -370,12 +346,15 @@ class SocketModeHandler:
 
         def process_event(client: SocketModeClient, req: SocketModeRequest):
             """Process incoming Socket Mode events."""
+            print(f"[SLACK] 🎯 Socket Mode Event Received!")
+            print(f"[SLACK] Event Type: {req.type}")
             logger.info("🎯 Socket Mode Event Received!")
             logger.info(f"Event Type: {req.type}")
 
             # Always acknowledge the request first
             response = SocketModeResponse(envelope_id=req.envelope_id)
             client.send_socket_mode_response(response)
+            print(f"[SLACK] ✅ Event Acknowledged")
             logger.info("✅ Event Acknowledged")
 
             try:
@@ -397,11 +376,13 @@ class SocketModeHandler:
 
                 # Handle message events
                 if req.type == "events_api" and event.get("type") == "message" and not event.get("subtype"):
+                    print(f"[SLACK] 💬 Processing Message Event")
                     logger.info("💬 Processing Message Event")
                     self._process_message(event)
 
                 # Handle interactive events
                 elif req.type == "interactive":
+                    print(f"[SLACK] 🔄 Processing Interactive Event")
                     logger.info("🔄 Processing Interactive Event")
                     interactive_context = {
                         "type": "interactive",
@@ -413,9 +394,11 @@ class SocketModeHandler:
                     }
                     self._process_interactive(interactive_context)
 
+                print(f"[SLACK] ✅ Event Processing Complete")
                 logger.info("✅ Event Processing Complete")
 
             except Exception as e:
+                print(f"[SLACK] ❌ Error processing socket mode event: {e}")
                 logger.error(f"Error processing socket mode event: {e}", exc_info=True)
 
         # Add the event listener
@@ -423,11 +406,15 @@ class SocketModeHandler:
 
     def _process_message(self, event):
         """Process a message event using a Strands agent."""
+        print(f"[SLACK] 📨 _process_message called")
+        print(f"[SLACK] Event: {json.dumps(event)}")
+        
         # Get bot info once and cache it
         if not hasattr(self, "bot_info"):
             try:
                 self.bot_info = client.auth_test()
             except Exception as e:
+                print(f"[SLACK] ❌ Error getting bot info: {e}")
                 logger.error(f"Error getting bot info: {e}")
                 self.bot_info = {"user_id": None, "bot_id": None}
 
@@ -437,6 +424,7 @@ class SocketModeHandler:
         has_app_id = "app_id" in event
         
         if is_bot_message or is_own_user or has_app_id:
+            print(f"[SLACK] ⏭️ Skipping own message (bot_id={is_bot_message}, own_user={is_own_user}, has_app_id={has_app_id})")
             logger.info("Skipping own message")
             return
 
@@ -445,12 +433,17 @@ class SocketModeHandler:
         user = event.get("user")
         ts = event.get("ts")
 
+        print(f"[SLACK] Processing message: {text}")
+        print(f"[SLACK] Channel ID: {channel_id}")
+        print(f"[SLACK] User: {user}")
+        print(f"[SLACK] Timestamp: {ts}")
         logger.info(f"Processing message: {text}")
         logger.info(f"Channel ID: {channel_id}")
         logger.info(f"User: {user}")
         logger.info(f"Timestamp: {ts}")
 
         if self.agent is None:
+            print(f"[SLACK] ❌ No agent found - cannot process message")
             logger.error("No agent found")
             return
 
@@ -466,13 +459,6 @@ class SocketModeHandler:
             trace_attributes=trace_attributes,
         )
 
-        # Add thinking reaction
-        try:
-            if client:
-                client.reactions_add(name="thinking_face", channel=channel_id, timestamp=ts)
-        except Exception as e:
-            logger.error(f"Error adding thinking reaction: {e}")
-
         # Get recent events for context
         slack_default_event_count = int(os.getenv("SLACK_DEFAULT_EVENT_COUNT", "42"))
         recent_events = self._get_recent_events(slack_default_event_count)
@@ -484,62 +470,175 @@ class SocketModeHandler:
             listen_only_tag = os.environ.get("STRANDS_SLACK_LISTEN_ONLY_TAG", "")
             if listen_only_tag:
                 if listen_only_tag not in text:
+                    print(f"[SLACK] ⏭️ Skipping message - does not contain tag: {listen_only_tag}")
                     logger.info(f"Skipping message - does not contain tag: {listen_only_tag}")
                     return
+
+            # Add thinking reaction
+            try:
+                if client:
+                    client.reactions_add(name="thinking_face", channel=channel_id, timestamp=ts)
+            except Exception as e:
+                logger.error(f"Error adding thinking reaction: {e}")
 
             # Refresh the system prompt with latest context handled from Slack events
             agent.system_prompt = (
                 f"{SLACK_SYSTEM_PROMPT}\n\nEvent Context:\nCurrent: {json.dumps(event)}{event_context}"
             )
 
-            logger.info(f"Agent system prompt: {agent.system_prompt}")
+            print(f"[SLACK] Agent system prompt length: {len(agent.system_prompt)} chars")
+            print(f"[SLACK] Calling agent with prompt: [Channel: {channel_id}] User {user} says: {text}")
+            logger.info(f"[SLACK] Agent system prompt length: {len(agent.system_prompt)} chars")
+            logger.info(f"[SLACK] Calling agent with prompt: [Channel: {channel_id}] User {user} says: {text}")
+            logger.info(f"[SLACK] Agent object: {agent}, type: {type(agent)}")
+            logger.info(f"[SLACK] Agent has __call__: {hasattr(agent, '__call__')}")
 
             # Process with agent
             agent_prompt = f"[Channel: {channel_id}] User {user} says: {text}"
-            response = agent(agent_prompt)
+            response = None
+            response_str = None
             
-            logger.info(f"Response: {response}")
+            try:
+                print(f"[SLACK] 🤖 Calling agent...")
+                response = agent(agent_prompt)
+                print(f"[SLACK] ✅ Agent call completed. Response type: {type(response)}, truthy: {bool(response)}")
+                logger.info(f"[SLACK] Agent call completed. Response: {response}")
+                logger.info(f"[SLACK] Response type: {type(response)}")
+                logger.info(f"[SLACK] Response truthy: {bool(response)}")
+                
+                # Try to safely convert response to string, catching KeyError specifically
+                try:
+                    response_str = str(response)
+                    print(f"[SLACK] Response converted to string successfully. Length: {len(response_str)} chars")
+                    logger.info(f"[SLACK] Response converted to string successfully")
+                except KeyError as ke:
+                    print(f"[SLACK] ❌ KeyError when converting response to string: {ke}")
+                    print(f"[SLACK] Response repr: {repr(response)}")
+                    print(f"[SLACK] Response type: {type(response)}")
+                    if hasattr(response, '__dict__'):
+                        print(f"[SLACK] Response __dict__: {response.__dict__}")
+                    if hasattr(response, '__class__'):
+                        print(f"[SLACK] Response class: {response.__class__}")
+                        print(f"[SLACK] Response class name: {response.__class__.__name__}")
+                    if isinstance(response, dict):
+                        print(f"[SLACK] Response keys: {list(response.keys())}")
+                        print(f"[SLACK] Response values: {list(response.values())}")
+                    # Try to get dir() attributes
+                    try:
+                        attrs = [attr for attr in dir(response) if not attr.startswith('_')]
+                        print(f"[SLACK] Response attributes (non-private): {attrs}")
+                    except:
+                        pass
+                    logger.error(f"[SLACK] KeyError when converting response: {ke}", exc_info=True)
+                    raise  # Re-raise to see full traceback
+                except Exception as str_error:
+                    print(f"[SLACK] ❌ Error converting response to string: {str_error}")
+                    print(f"[SLACK] Error type: {type(str_error)}")
+                    logger.error(f"[SLACK] Error converting response to string: {str_error}", exc_info=True)
+                    raise
+                
+                if response:
+                    print(f"[SLACK] Response length: {len(response_str)} chars, stripped: {len(response_str.strip())} chars")
+                    logger.info(f"[SLACK] Response str length: {len(response_str)}")
+                    logger.info(f"[SLACK] Response str stripped length: {len(response_str.strip())}")
+            except Exception as agent_error:
+                print(f"[SLACK] ❌ Agent call raised exception: {agent_error}")
+                logger.error(f"[SLACK] ❌ Agent call raised exception: {agent_error}", exc_info=True)
+                raise  # Re-raise to be caught by outer exception handler
+            
+            # Check if we have a valid response
+            if not response:
+                print(f"[SLACK] ❌ Agent returned None or empty response!")
+                logger.error(f"[SLACK] ❌ Agent returned None or empty response!")
+                logger.error(f"[SLACK] This should not happen - agent should always return a response")
+                raise ValueError("Agent returned None or empty response - this indicates a connection or agent failure")
+            
+            # Use response_str that we safely converted earlier
+            if not response_str or not response_str.strip():
+                print(f"[SLACK] ❌ Agent returned empty string after stripping!")
+                logger.error(f"[SLACK] ❌ Agent returned empty string after stripping!")
+                logger.error(f"[SLACK] Raw response: {repr(response)}")
+                logger.error(f"[SLACK] Response_str: {repr(response_str)}")
+                raise ValueError("Agent returned empty string - this indicates a connection or agent failure")
 
-            # If we have a valid response, send it back to Slack
-            if response and str(response).strip():
+            print(f"[SLACK] ✅ Got valid response from agent: {response_str.strip()[:200]}...")
+            logger.info(f"[SLACK] ✅ Got valid response from agent: {response_str.strip()[:200]}...")
+
+            # Always remove thinking reaction first
+            try:
                 if client:
-                    logger.info(f"Sending response to Slack: {response}")
-                    # Check if auto-reply is enabled
-                    auto_reply_enabled = os.getenv("STRANDS_SLACK_AUTO_REPLY", "true").lower() == "true"
-                    if auto_reply_enabled:
+                    client.reactions_remove(name="thinking_face", channel=channel_id, timestamp=ts)
+                    print(f"[SLACK] ✅ Removed thinking_face reaction")
+                    logger.info("[SLACK] ✅ Removed thinking_face reaction")
+            except Exception as e:
+                print(f"[SLACK] ❌ Error removing thinking reaction: {e}")
+                logger.error(f"[SLACK] Error removing thinking reaction: {e}")
+
+            # Send response to Slack
+            if client:
+                print(f"[SLACK] 📤 Sending response to Slack...")
+                logger.info(f"[SLACK] Sending response to Slack...")
+                # Check if auto-reply is enabled
+                auto_reply_enabled = os.getenv("STRANDS_SLACK_AUTO_REPLY", "true").lower() == "true"
+                print(f"[SLACK] Auto-reply enabled: {auto_reply_enabled}")
+                if auto_reply_enabled:
+                    try:
                         client.chat_postMessage(
                             channel=channel_id,
-                            text=str(response).strip(),
+                            text=response_str.strip(),
                             thread_ts=ts,
                         )
+                        print(f"[SLACK] ✅ Message sent successfully to channel {channel_id}")
+                        logger.info("[SLACK] ✅ Message sent successfully")
+                    except Exception as send_error:
+                        print(f"[SLACK] ❌ Error sending message to Slack: {send_error}")
+                        logger.error(f"[SLACK] ❌ Error sending message to Slack: {send_error}", exc_info=True)
+                        raise  # Re-raise to be caught by outer exception handler
 
-                    # Remove thinking reaction
-                    client.reactions_remove(name="thinking_face", channel=channel_id, timestamp=ts)
-
-                    # Add completion reaction
+                # Add completion reaction
+                try:
                     client.reactions_add(name="white_check_mark", channel=channel_id, timestamp=ts)
+                    print(f"[SLACK] ✅ Added white_check_mark reaction")
+                    logger.info("[SLACK] ✅ Added white_check_mark reaction")
+                except Exception as e:
+                    print(f"[SLACK] ❌ Error adding completion reaction: {e}")
+                    logger.error(f"[SLACK] Error adding completion reaction: {e}")
 
         except Exception as e:
-            logger.error(f"Error processing message: {e}", exc_info=True)
+            print(f"[SLACK] ❌ Error processing message: {e}")
+            logger.error(f"[SLACK] ❌ Error processing message: {e}", exc_info=True)
+
+            # Always remove thinking reaction on error
+            try:
+                if client:
+                    client.reactions_remove(name="thinking_face", channel=channel_id, timestamp=ts)
+                    print(f"[SLACK] ✅ Removed thinking_face reaction (error case)")
+                    logger.info("[SLACK] ✅ Removed thinking_face reaction (error case)")
+            except Exception as e_remove:
+                print(f"[SLACK] ❌ Error removing thinking reaction: {e_remove}")
+                logger.error(f"[SLACK] Error removing thinking reaction: {e_remove}")
 
             # Try to send error message to channel
             if client:
                 try:
-                    # Remove thinking reaction
-                    client.reactions_remove(name="thinking_face", channel=channel_id, timestamp=ts)
-
-                    # Add error reaction and message
+                    # Add error reaction
                     client.reactions_add(name="x", channel=channel_id, timestamp=ts)
 
                     # Only send error message if auto-reply is enabled
-                    if os.getenv("STRANDS_SLACK_AUTO_REPLY", "true").lower() == "true":
+                    auto_reply_enabled = os.getenv("STRANDS_SLACK_AUTO_REPLY", "true").lower() == "true"
+                    print(f"[SLACK] Auto-reply enabled: {auto_reply_enabled}, sending error message")
+                    if auto_reply_enabled:
+                        error_msg = f"Error processing message: {str(e)[:500]}"
                         client.chat_postMessage(
                             channel=channel_id,
-                            text=f"Error processing message: {str(e)}",
+                            text=error_msg,
                             thread_ts=ts,
                         )
+                        print(f"[SLACK] ✅ Sent error message to channel")
+                        logger.info(f"[SLACK] ✅ Sent error message to channel")
                 except Exception as e2:
-                    logger.error(f"Error sending error message: {e2}")
+                    print(f"[SLACK] ❌ Error sending error message: {e2}")
+                    logger.error(f"[SLACK] Error sending error message: {e2}", exc_info=True)
 
     def _process_interactive(self, event):
         """Process an interactive event."""
@@ -608,20 +707,27 @@ class SocketModeHandler:
 
     def start(self, agent):
         """Start the Socket Mode connection."""
+        print(f"[SLACK] 🚀 Starting Socket Mode Connection...")
         logger.info("🚀 Starting Socket Mode Connection...")
 
         self.agent = agent
 
         if not self.is_connected:
             try:
+                print(f"[SLACK] Setting up Socket Mode client...")
                 self._setup_client()
+                print(f"[SLACK] Connecting Socket Mode client...")
                 self.client.connect()
                 self.is_connected = True
+                print(f"[SLACK] ✅ Socket Mode connection established!")
+                print(f"[SLACK] Client: {self.client}, Is connected: {self.is_connected}")
                 logger.info("✅ Socket Mode connection established!")
                 return True
             except Exception as e:
+                print(f"[SLACK] ❌ Error starting Socket Mode: {str(e)}")
                 logger.error(f"❌ Error starting Socket Mode: {str(e)}")
                 return False
+        print(f"[SLACK] ℹ️ Already connected, no action needed")
         logger.info("ℹ️ Already connected, no action needed")
         return True
 
@@ -654,10 +760,13 @@ def start_socket_mode_auto(agent_instance):
     Returns:
         bool: True if socket mode started successfully, False otherwise
     """
+    print(f"[SLACK] 🔄 Auto-starting Socket Mode...")
     if socket_handler.start(agent_instance):
+        print(f"[SLACK] ✅ Socket Mode auto-started successfully")
         logger.info("✅ Socket Mode auto-started successfully")
         return True
     else:
+        print(f"[SLACK] ❌ Failed to auto-start Socket Mode")
         logger.error("❌ Failed to auto-start Socket Mode")
         return False
 

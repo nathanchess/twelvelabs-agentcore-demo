@@ -3,3 +3,5 @@
 
 /__pycache__
 /custom_tools/__pycache__
+/test
+/slack_events

@@ -33,6 +33,8 @@ async def invoke(payload):
     global _socket_mode_started
 
     system_message = payload.get("prompt")
+
+    print(f"System message: {system_message}")
     
     # Extract tokens from prompt BEFORE processing (Electron embeds them in the prompt text)
     # This allows socket mode to start immediately, independent of agent processing
@@ -43,7 +45,7 @@ async def invoke(payload):
     if bot_token_match and app_token_match:
         os.environ["SLACK_BOT_TOKEN"] = bot_token_match.group(1)
         os.environ["SLACK_APP_TOKEN"] = app_token_match.group(1)
-        print(f"✅ Extracted Slack tokens from prompt")
+        print(f"Extracted Slack tokens from prompt")
     
     # Start socket mode ONCE if tokens are available (runs independently in background)
     if not _socket_mode_started:
@@ -60,11 +62,11 @@ async def invoke(payload):
                 from custom_tools.slack import start_socket_mode_auto
                 if start_socket_mode_auto(agent):
                     _socket_mode_started = True
-                    print(f"✅ Slack Socket Mode started - now listening for Slack messages independently")
+                    print(f"Slack Socket Mode started - now listening for Slack messages independently")
                 else:
-                    print(f"❌ Failed to start Socket Mode")
+                    print(f"Failed to start Socket Mode")
             except Exception as e:
-                print(f"❌ Failed to start Slack Socket Mode: {e}")
+                print(f"Failed to start Slack Socket Mode: {e}")
                 import traceback
                 traceback.print_exc()
             print(f"{'='*60}\n")
