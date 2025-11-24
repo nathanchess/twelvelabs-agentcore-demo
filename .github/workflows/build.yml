@@ -23,6 +23,14 @@ jobs:
           cache: 'npm'
           cache-dependency-path: electron-app/package-lock.json
       
+      - name: Install Perl module for DMG (macOS only)
+        if: matrix.os == 'macos-latest'
+        run: |
+          # Install cpanminus for easier Perl module installation
+          curl -L https://cpanmin.us | perl - App::cpanminus
+          # Install the required Perl module for DMG customization
+          cpanm --notest Mac::Finder::DSStore || echo "Perl module installation failed, continuing with basic DMG"
+      
       - name: Install dependencies
         working-directory: electron-app
         run: npm ci

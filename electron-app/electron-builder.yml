@@ -57,6 +57,8 @@ dmg:
   artifactName: ${productName}-${version}.${ext}
   title: ${productName} ${version}
   icon: build/icon.icns
+  # Minimal DMG config to avoid Perl module dependency (Mac::Finder::DSStore)
+  # on GitHub Actions macOS runners. The DMG will be created with default layout.
 linux:
   target:
     - AppImage
