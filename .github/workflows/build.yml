@@ -87,14 +87,13 @@ jobs:
       
       - name: Verify electron-builder installation
         working-directory: electron-app
+        shell: bash
         run: |
-          # Verify electron-builder is installed
-          if [ ! -f "node_modules/.bin/electron-builder" ]; then
+          if ! npx electron-builder --version 2>/dev/null; then
             echo "electron-builder not found, installing..."
             npm install electron-builder --save-dev
+            npx electron-builder --version
           fi
-          # Verify it's accessible
-          npx electron-builder --version || echo "Warning: electron-builder version check failed"
       
       - name: Build app
         working-directory: electron-app
