@@ -25,7 +25,9 @@ jobs:
       
       - name: Install dependencies
         working-directory: electron-app
-        run: npm ci
+        run: |
+          # Try npm ci first, fall back to npm install if lock file is out of sync
+          npm ci || npm install
       
       - name: Install Mac::Finder::DSStore Perl module (macOS only)
         if: matrix.os == 'macos-latest'
