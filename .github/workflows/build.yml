@@ -63,19 +63,20 @@ jobs:
             find /opt/homebrew -name "DSStore.pm" 2>/dev/null || true
             exit 1
           fi
-          # Also copy Mac::Memory if it was installed
-          MEMORY_PATH=$(find /opt/homebrew -name "Memory.pm" -path "*/Mac/*" 2>/dev/null | head -1)
-          if [ -n "$MEMORY_PATH" ] && [ -f "$MEMORY_PATH" ]; then
-            echo "Found Mac::Memory at: $MEMORY_PATH"
-            sudo mkdir -p /Library/Perl/5.34/Mac
-            sudo cp "$MEMORY_PATH" /Library/Perl/5.34/Mac/Memory.pm
-            # Copy directory contents if needed
-            MEMORY_DIR=$(dirname "$MEMORY_PATH")
-            if [ -d "$MEMORY_DIR" ] && [ "$MEMORY_DIR" != "." ]; then
-              sudo cp -r "$MEMORY_DIR"/* /Library/Perl/5.34/Mac/ 2>/dev/null || true
-            fi
-            echo "Mac::Memory copied to system Perl location"
-          fi
+          # Mac::Memory failed to install (requires Mac-Carbon which doesn't work on 64-bit)
+          # Create a minimal stub module to satisfy the import requirement
+          echo "Creating stub Mac::Memory module (Mac-Carbon not available on 64-bit)"
+          sudo mkdir -p /Library/Perl/5.34/Mac
+          sudo tee /Library/Perl/5.34/Mac/Memory.pm > /dev/null << 'EOF'
+package Mac::Memory;
+# Stub module - Mac-Carbon doesn't work on 64-bit systems
+# This minimal stub satisfies the import requirement for electron-builder
+use strict;
+use warnings;
+our $VERSION = '0.82';
+1;
+EOF
+          echo "Stub Mac::Memory module created"
           # Verify using SYSTEM Perl (what electron-builder uses)
           /usr/bin/perl -MMac::Finder::DSStore -e 'print "Mac::Finder::DSStore verified\n"'
           /usr/bin/perl -MMac::Memory -e 'print "Mac::Memory verified\n"' 2>/dev/null || echo "Note: Mac::Memory may not be needed"
