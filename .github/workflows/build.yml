@@ -65,15 +65,19 @@ jobs:
             find /opt/homebrew -name "DSStore.pm" 2>/dev/null || true
             exit 1
           fi
-          # Mac::Memory failed to install (requires Mac-Carbon which doesn't work on 64-bit)
-          # Create a minimal stub module to satisfy the import requirement
-          echo "Creating stub Mac::Memory module (Mac-Carbon not available on 64-bit)"
+          # Mac::Memory and Mac::Files failed to install (requires Mac-Carbon which doesn't work on 64-bit)
+          # Create minimal stub modules to satisfy the import requirements
+          echo "Creating stub Mac::Memory and Mac::Files modules (Mac-Carbon not available on 64-bit)"
           sudo mkdir -p /Library/Perl/5.34/Mac
+          # Create Mac::Memory stub
           printf 'package Mac::Memory;\n# Stub module - Mac-Carbon does not work on 64-bit systems\n# This minimal stub satisfies the import requirement for electron-builder\nuse strict;\nuse warnings;\nour $VERSION = '\''0.82'\'';\n1;\n' | sudo tee /Library/Perl/5.34/Mac/Memory.pm > /dev/null
-          # Ensure proper permissions on the stub module
+          # Create Mac::Files stub
+          printf 'package Mac::Files;\n# Stub module - Mac-Carbon does not work on 64-bit systems\n# This minimal stub satisfies the import requirement for electron-builder\nuse strict;\nuse warnings;\nour $VERSION = '\''0.82'\'';\n1;\n' | sudo tee /Library/Perl/5.34/Mac/Files.pm > /dev/null
+          # Ensure proper permissions on the stub modules
           sudo chmod 644 /Library/Perl/5.34/Mac/Memory.pm
+          sudo chmod 644 /Library/Perl/5.34/Mac/Files.pm
           sudo chmod 755 /Library/Perl/5.34/Mac
-          echo "Stub Mac::Memory module created with proper permissions"
+          echo "Stub Mac::Memory and Mac::Files modules created with proper permissions"
           # Verify using SYSTEM Perl (what electron-builder uses)
           /usr/bin/perl -MMac::Finder::DSStore -e 'print "Mac::Finder::DSStore verified\n"' || {
             echo "ERROR: Mac::Finder::DSStore verification failed"
@@ -81,6 +85,10 @@ jobs:
           }
           /usr/bin/perl -MMac::Memory -e 'print "Mac::Memory verified\n"' || {
             echo "ERROR: Mac::Memory verification failed"
+            exit 1
+          }
+          /usr/bin/perl -MMac::Files -e 'print "Mac::Files verified\n"' || {
+            echo "ERROR: Mac::Files verification failed"
             exit 1
           }
           echo "All Perl modules verified successfully"
