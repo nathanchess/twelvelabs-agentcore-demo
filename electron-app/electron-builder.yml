@@ -17,7 +17,6 @@ asarUnpack:
   - "**/node_modules/@ffmpeg-installer/darwin-arm64/**/*"
   - "**/node_modules/@ffmpeg-installer/linux-x64/**/*"
 win:
-  executableName: strands-agent
   target:
     - target: nsis
       arch:
@@ -52,10 +51,8 @@ mac:
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
     - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
     - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
-  notarize: false
-  # For production, set these environment variables:
-  # APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID
-  # Then set notarize: true
+  # Notarization is handled via environment variables (APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID)
+  # electron-builder will automatically notarize if these are set and code signing is enabled
 dmg:
   artifactName: ${productName}-${version}.${ext}
   title: ${productName} ${version}

@@ -3,12 +3,13 @@ import VideoDashboard from './components/VideoDashboard'
 import SideBar from './components/SideBar'
 import AccountInformation from './components/AccountInformation'
 import VideoPlayer from './components/VideoPlayer'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 
 function App() {
 
   const [videos, setVideos] = useState([])
   const [currentPage, setCurrentPage] = useState('Video Library')
+  const heartbeatIntervalRef = useRef(null)
 
   const scanFolder = async () => await window.api.scanFolder()
   const fetchThumbnail = async (filepath) => await window.api.fetchThumbnail(filepath)
@@ -62,6 +63,27 @@ function App() {
     }
   }
 
+  const heartbeat = async () => {
+
+    const twelveLabsApiKey = localStorage.getItem('TWELVELABS_API_KEY')
+    const slack_bot_token = localStorage.getItem('SLACK_BOT_TOKEN')
+    const slack_app_token = localStorage.getItem('SLACK_APP_TOKEN')
+
+    try {
+      await window.api.promptStrandsAgent(
+        "heartbeat",
+        twelveLabsApiKey,
+        slack_bot_token,
+        slack_app_token,
+        [],
+        "",
+        false
+      )
+    } catch (error) {
+      console.error('Error sending heartbeat:', error)
+    }
+  }
+
   const createAgentSession = async () => {
     const sessionId = await window.api.createAgentSession()
     console.log('Agent session created:', sessionId)
@@ -71,6 +93,16 @@ function App() {
     fetchVideos()
     sendEnvVariables()
     createAgentSession()
+
+    heartbeatIntervalRef.current = setInterval(heartbeat, 60 * 1000 * 5) // 5 minutes
+
+    return () => {
+      if (heartbeatIntervalRef.current) {
+        clearInterval(heartbeatIntervalRef.current)
+        heartbeatIntervalRef.current = null
+      }
+    }
+
   }, [])
 
   const handleVideoDeleted = () => {

@@ -750,35 +750,6 @@ app.whenReady().then(() => {
     const prompt_template = `
     You are a helpful assistant that analyzes Zoom video recordings then answers questions about the video.
 
-    /********** CRITICAL: SLACK AUTO-REPLY BEHAVIOR **********/
-    
-    **WHEN RESPONDING TO SLACK MESSAGES (auto-reply mode):**
-    
-    ⚠️ **ABSOLUTE RULE**: Complete ALL tool calls FIRST, then send ONE final message with complete results.
-    
-    ❌ **NEVER DO THIS**:
-    - Send "I'm working on it..." or "Let me check..." messages
-    - Send intermediate status updates
-    - Send multiple messages during tool execution
-    - Send a message after each tool call
-    
-    ✅ **ALWAYS DO THIS**:
-    - Execute ALL necessary tools silently (get_video_index, search_video, chat_video, etc.)
-    - Gather ALL information needed
-    - Process ALL results
-    - Compose ONE complete message with all findings
-    - Send that ONE message using slack_send_message
-    
-    **WORKFLOW**: Tools → Analysis → ONE Complete Message → Done
-    
-    **EXAMPLE**: If asked "Find when Eric Johnson spoke":
-    1. Use get_video_index to find the video
-    2. Use search_video to find Eric Johnson's speaking moments
-    3. Process all results
-    4. Send ONE message: "Eric Johnson spoke at these times: [complete list]"
-    
-    /********** END CRITICAL SLACK AUTO-REPLY BEHAVIOR **********/
-
     Alongside answering questions you can also search the video for specific moments, or summarize the video.
     You can also send messages in a Slack channel, in provided the Slack bot token and app token.
     The Slack channel will likely have people that were in the video recording and you may be asked to send messages to them based on the prompt.
@@ -796,6 +767,12 @@ app.whenReady().then(() => {
     * Do NOT use double asterisks (**bold**) or hashes (### Header). Slack will display those characters literally.
     
     /********** END NEW SLACK FORMATTING INSTRUCTIONS **********/
+
+    /********** START HEARTBEAT INSTRUCTIONS **********/
+
+    **CRITICAL: If the user sends the prompt 'heartbeat', your ONLY action is to respond with the single word 'ack'. This is a keep-alive signal. Do not say anything else.
+    
+    /********** END HEARTBEAT INSTRUCTIONS **********/
 
     The user will provide you with a video ID, representing the video ID indexed in TwelveLabs. You can use this video ID to analyze the video.
     
@@ -828,34 +805,6 @@ app.whenReady().then(() => {
 
     DO NOT write the API keys and tokens to the response, just handle them internally.
     DO NOT take extra actions, especially in regards to Slack or TwelveLabs. Do only what you are told to do and clarify if needed with the user.
-
-    /********** CRITICAL INSTRUCTIONS FOR SLACK AUTO-REPLY **********/
-    
-    **ABSOLUTELY CRITICAL: When responding to Slack messages via auto-reply, you MUST follow these rules:**
-    
-    1. **COMPLETE ALL TOOL CALLS FIRST**: Before sending ANY message to Slack, you MUST complete ALL necessary tool calls (get_video_index, search_video, chat_video, etc.) and gather ALL the information you need.
-    
-    2. **NO INTERMEDIATE MESSAGES**: Do NOT send messages like "I'm working on it", "Let me check...", "Setting up...", or any other intermediate status updates. These are STRICTLY FORBIDDEN.
-    
-    3. **ONE FINAL MESSAGE ONLY**: After completing ALL tool calls and gathering ALL information, send EXACTLY ONE message to Slack with the complete answer, results, or findings.
-    
-    4. **WORKFLOW FOR SLACK AUTO-REPLY**:
-       - Step 1: Use ALL necessary tools (get_video_index, search_video, chat_video, etc.) to gather information
-       - Step 2: Process and analyze ALL the results
-       - Step 3: Compose ONE complete message with all findings
-       - Step 4: Send that ONE message to Slack using slack_send_message
-    
-    5. **IF YOU CANNOT COMPLETE THE TASK**: Only if you cannot complete the task after trying all available tools, send ONE message explaining what information is missing or what went wrong. Do NOT send multiple messages.
-    
-    6. **EXAMPLE OF WRONG BEHAVIOR**:
-       ❌ "I'm setting up the video index..." (sent immediately)
-       ❌ "Let me search for that..." (sent after first tool)
-       ❌ "I found some results..." (sent after second tool)
-       ✅ "Here are the moments where Eric Johnson spoke: [complete list with timestamps]" (sent after ALL tools complete)
-    
-    7. **REMEMBER**: The user expects ONE complete answer, not a conversation. Complete your work silently, then deliver the final result.
-    
-    /********** END CRITICAL INSTRUCTIONS FOR SLACK AUTO-REPLY **********/
 
     Here is the prompt:
     ${prompt}
