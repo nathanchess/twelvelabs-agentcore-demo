@@ -30,15 +30,18 @@ jobs:
       - name: Install Mac::Finder::DSStore Perl module (macOS only)
         if: matrix.os == 'macos-latest'
         run: |
-          # Use CPAN directly to install to system Perl location
-          # This ensures the module goes to /Library/Perl where electron-builder expects it
-          echo "yes" | sudo cpan -i Mac::Finder::DSStore
-          # Verify the module is accessible from system Perl
-          perl -MMac::Finder::DSStore -e 'print "Module verified\n"' || {
-            echo "Warning: Module verification failed"
-            # Try to find where it was installed
-            find /Library/Perl /usr/local/lib/perl5 -name "DSStore.pm" 2>/dev/null || true
-          }
+          # CRITICAL: electron-builder uses SYSTEM Perl (/usr/bin/perl 5.34), not Homebrew Perl
+          # Install cpanminus first
+          brew install cpanminus
+          # Force cpanm to use SYSTEM Perl and install to system Perl location
+          # Set PERL to system Perl and PERL5LIB to system Perl paths
+          export PERL=/usr/bin/perl
+          export PERL5LIB=/Library/Perl/5.34:/Library/Perl/5.34/darwin-thread-multi-2level
+          # Install using system Perl explicitly
+          sudo -E cpanm --notest -l /Library/Perl/5.34 Mac::Finder::DSStore || \
+          sudo /usr/bin/perl $(which cpanm) --notest Mac::Finder::DSStore
+          # Verify using SYSTEM Perl (what electron-builder uses)
+          /usr/bin/perl -MMac::Finder::DSStore -e 'print "Module verified in system Perl\n"'
       
       - name: Build app
         working-directory: electron-app
