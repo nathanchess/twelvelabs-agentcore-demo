@@ -9,22 +9,16 @@ Cross-platform desktop application that fuses TwelveLabs’ video intelligence w
 ---
 
 ## Quick Links
-- GitHub Repository: `nathanchess/twelvelabs-agentcore-demo`
 - Latest macOS & Windows builds (zip + installers): [Release v1.0.0](https://github.com/nathanchess/twelvelabs-agentcore-demo/releases/tag/v1.0.0) [[1]](https://github.com/nathanchess/twelvelabs-agentcore-demo/releases/tag/v1.0.0)
-- Technical Architecture Diagram: `assets/FullArchitecture.png`
-- Strands Agent Reference: `strands-agents/tools`
+- Technical Architecture Diagram (LucidChart): [Strands Agent Integration](https://lucid.app/lucidchart/40b7aa79-6da6-4bed-bd63-5f34e3955685/edit?view_items=McO_sIZsgpDT%2CL_N_FOkbTwWR%2C1dO__CpjlG8n%2CceO_i_dsF7J2%2C5yO_-oCSiLhl%2C3~M_kWj3GR6q%2CfWO_ykzQ1eVH%2Cz-O_~5-stUaC%2CLWO_XsAfAyCf%2CdLO_lEZEZeQ5%2CyaO_BHhCXflV%2CpcO_nBJHo49W%2Cm-N_QkFpJf~N%2CMXO_Br0AepVd%2CHzO_5cd6CqNR%2CGXO_2nwaDfqQ%2CSXO_7rOd5mDQ%2CYXO_p~Hrg_Qt&page=0_0&invitationId=inv_ba388ce0-6ad8-4f77-9ac1-c8a4edc405db)
+- Technical Architecture Briefing (Google Doc): [AWS re:Invent | Strands Agent TwelveLabs Integration](https://docs.google.com/document/d/1jvfr4kleZ-ghZ7v8RwLEaRPO0W9GEiMHqToBy8Mr9y0/edit?usp=sharing)
+- Strands Agent Reference: [strands-agents/tools](https://github.com/strands-agents/tools)
 
 ---
 
 ## Architecture at a Glance
 
 ![Full Architecture Overview](assets/FullArchitecture.png)
-
-**Frontend flow**
-![Frontend Flow](assets/Frontend.png)
-
-**Backend flow**
-![Backend Flow](assets/Backend.png)
 
 ---
 
