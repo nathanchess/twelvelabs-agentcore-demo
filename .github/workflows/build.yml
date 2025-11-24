@@ -114,12 +114,30 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
       
+      - name: Clean up any mounted DMGs before build
+        if: matrix.os == 'macos-latest'
+        run: |
+          # Clean up any leftover mounted DMGs from previous runs
+          for disk in $(hdiutil info | grep -E '^/dev/disk' | awk '{print $1}'); do
+            hdiutil detach "$disk" 2>/dev/null || true
+          done
+          # Wait a moment for cleanup
+          sleep 2
+      
       - name: Build macOS DMG
         if: matrix.os == 'macos-latest'
         working-directory: electron-app
         run: npm run build:mac
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+      
+      - name: Clean up mounted DMGs after build
+        if: matrix.os == 'macos-latest'
+        run: |
+          # Clean up any mounted DMGs after build
+          for disk in $(hdiutil info | grep -E '^/dev/disk' | awk '{print $1}'); do
+            hdiutil detach "$disk" 2>/dev/null || true
+          done
       
       - name: Upload artifacts
         uses: actions/upload-artifact@v4
