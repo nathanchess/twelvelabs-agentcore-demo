@@ -83,6 +83,17 @@ jobs:
           }
           echo "All Perl modules verified successfully"
       
+      - name: Verify electron-builder installation
+        working-directory: electron-app
+        run: |
+          # Verify electron-builder is installed
+          if [ ! -f "node_modules/.bin/electron-builder" ]; then
+            echo "electron-builder not found, installing..."
+            npm install electron-builder --save-dev
+          fi
+          # Verify it's accessible
+          npx electron-builder --version || echo "Warning: electron-builder version check failed"
+      
       - name: Build app
         working-directory: electron-app
         run: npm run build
