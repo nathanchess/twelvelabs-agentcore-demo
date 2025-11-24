@@ -76,10 +76,20 @@ use warnings;
 our $VERSION = '0.82';
 1;
 EOF
-          echo "Stub Mac::Memory module created"
+          # Ensure proper permissions on the stub module
+          sudo chmod 644 /Library/Perl/5.34/Mac/Memory.pm
+          sudo chmod 755 /Library/Perl/5.34/Mac
+          echo "Stub Mac::Memory module created with proper permissions"
           # Verify using SYSTEM Perl (what electron-builder uses)
-          /usr/bin/perl -MMac::Finder::DSStore -e 'print "Mac::Finder::DSStore verified\n"'
-          /usr/bin/perl -MMac::Memory -e 'print "Mac::Memory verified\n"' 2>/dev/null || echo "Note: Mac::Memory may not be needed"
+          /usr/bin/perl -MMac::Finder::DSStore -e 'print "Mac::Finder::DSStore verified\n"' || {
+            echo "ERROR: Mac::Finder::DSStore verification failed"
+            exit 1
+          }
+          /usr/bin/perl -MMac::Memory -e 'print "Mac::Memory verified\n"' || {
+            echo "ERROR: Mac::Memory verification failed"
+            exit 1
+          }
+          echo "All Perl modules verified successfully"
       
       - name: Build app
         working-directory: electron-app
