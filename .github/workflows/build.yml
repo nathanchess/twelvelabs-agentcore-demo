@@ -36,18 +36,31 @@ jobs:
           # Install to Homebrew Perl location first (cpanm default)
           cpanm --notest Mac::Finder::DSStore
           # Find where it was installed (Homebrew Perl location)
-          HOMEBREW_PERL_MODULE=$(/opt/homebrew/bin/perl -MFile::Spec -e 'print File::Spec->catfile(@INC[0], "Mac", "Finder", "DSStore.pm")' 2>/dev/null || echo "")
-          if [ -f "$HOMEBREW_PERL_MODULE" ]; then
-            echo "Found module at: $HOMEBREW_PERL_MODULE"
+          # Use find to locate the module
+          HOMEBREW_MODULE_PATH=$(find /opt/homebrew -name "DSStore.pm" -path "*/Mac/Finder/*" 2>/dev/null | head -1)
+          # If not found, try using Homebrew Perl to locate it
+          if [ -z "$HOMEBREW_MODULE_PATH" ] || [ ! -f "$HOMEBREW_MODULE_PATH" ]; then
+            if [ -f "/opt/homebrew/bin/perl" ]; then
+              HOMEBREW_MODULE_PATH=$(/opt/homebrew/bin/perl -MFile::Spec -e 'for(@INC) { my $p = File::Spec->catfile($_, "Mac", "Finder", "DSStore.pm"); print "$p\n" and exit if -f $p }' 2>/dev/null | head -1)
+            fi
+          fi
+          if [ -n "$HOMEBREW_MODULE_PATH" ] && [ -f "$HOMEBREW_MODULE_PATH" ]; then
+            echo "Found module at: $HOMEBREW_MODULE_PATH"
             # Create system Perl directory structure
             sudo mkdir -p /Library/Perl/5.34/Mac/Finder
             # Copy the module to system Perl location
-            sudo cp "$HOMEBREW_PERL_MODULE" /Library/Perl/5.34/Mac/Finder/DSStore.pm
-            # Also copy any other related files
-            HOMEBREW_MODULE_DIR=$(dirname "$HOMEBREW_PERL_MODULE")
-            if [ -d "$HOMEBREW_MODULE_DIR" ]; then
-              sudo cp -r "$HOMEBREW_MODULE_DIR"/* /Library/Perl/5.34/Mac/Finder/ 2>/dev/null || true
+            sudo cp "$HOMEBREW_MODULE_PATH" /Library/Perl/5.34/Mac/Finder/DSStore.pm
+            # Also copy the entire Finder directory if it exists
+            HOMEBREW_FINDER_DIR=$(dirname "$HOMEBREW_MODULE_PATH")
+            if [ -d "$HOMEBREW_FINDER_DIR" ]; then
+              sudo cp -r "$HOMEBREW_FINDER_DIR"/* /Library/Perl/5.34/Mac/Finder/ 2>/dev/null || true
             fi
+            echo "Module copied to system Perl location"
+          else
+            echo "ERROR: Could not find installed module"
+            echo "Searching for module..."
+            find /opt/homebrew -name "DSStore.pm" 2>/dev/null || true
+            exit 1
           fi
           # Verify using SYSTEM Perl (what electron-builder uses)
           /usr/bin/perl -MMac::Finder::DSStore -e 'print "Module verified in system Perl\n"'
