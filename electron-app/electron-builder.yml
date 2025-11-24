@@ -57,10 +57,9 @@ dmg:
   artifactName: ${productName}-${version}.${ext}
   title: ${productName} ${version}
   icon: build/icon.icns
-  # Disable DMG window customization to avoid Perl module dependency (Mac::Finder::DSStore)
-  # This prevents DMG customization errors on GitHub Actions macOS runners
-  window: null
-  background: null
+  # Disable DMG customization to avoid Perl module dependency (Mac::Finder::DSStore)
+  # Removing window and background properties prevents DMG customization errors
+  # on GitHub Actions macOS runners. DMG will use default system layout.
 linux:
   target:
     - AppImage
