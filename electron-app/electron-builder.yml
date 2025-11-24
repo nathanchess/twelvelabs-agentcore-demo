@@ -21,7 +21,8 @@ win:
     - target: nsis
       arch:
         - x64
-        - ia32
+  # Removed ia32 (32-bit) - most modern Windows systems are 64-bit
+  # Building only x64 reduces build time and avoids app-builder.exe errors
   icon: build/icon.ico  # Keep using .ico format for Windows (you can replace this file with TwelveLabs logo converted to .ico)
   publisherName: TwelveLabs
   # Completely disable code signing to prevent winCodeSign download
@@ -55,11 +56,10 @@ mac:
   # electron-builder will automatically notarize if these are set and code signing is enabled
 dmg:
   artifactName: ${productName}-${version}.${ext}
-  title: ${productName} ${version}
-  icon: build/icon.icns
-  # Disable DMG customization to avoid Perl module dependency (Mac::Finder::DSStore)
-  # Removing window and background properties prevents DMG customization errors
-  # on GitHub Actions macOS runners. DMG will use default system layout.
+  # Removed 'title' property - it triggers DMG customization requiring Perl module
+  # Removed 'icon' property - it also triggers customization
+  # This minimal config avoids Mac::Finder::DSStore Perl module dependency
+  # DMG will be created with default macOS layout (functional but basic)
 linux:
   target:
     - AppImage
