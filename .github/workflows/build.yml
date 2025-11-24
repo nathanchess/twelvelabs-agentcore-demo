@@ -67,15 +67,7 @@ jobs:
           # Create a minimal stub module to satisfy the import requirement
           echo "Creating stub Mac::Memory module (Mac-Carbon not available on 64-bit)"
           sudo mkdir -p /Library/Perl/5.34/Mac
-          sudo tee /Library/Perl/5.34/Mac/Memory.pm > /dev/null << 'EOF'
-package Mac::Memory;
-# Stub module - Mac-Carbon doesn't work on 64-bit systems
-# This minimal stub satisfies the import requirement for electron-builder
-use strict;
-use warnings;
-our $VERSION = '0.82';
-1;
-EOF
+          printf 'package Mac::Memory;\n# Stub module - Mac-Carbon does not work on 64-bit systems\n# This minimal stub satisfies the import requirement for electron-builder\nuse strict;\nuse warnings;\nour $VERSION = '\''0.82'\'';\n1;\n' | sudo tee /Library/Perl/5.34/Mac/Memory.pm > /dev/null
           # Ensure proper permissions on the stub module
           sudo chmod 644 /Library/Perl/5.34/Mac/Memory.pm
           sudo chmod 755 /Library/Perl/5.34/Mac
