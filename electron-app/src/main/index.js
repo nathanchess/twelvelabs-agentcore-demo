@@ -2,7 +2,6 @@ import { app, shell, BrowserWindow, ipcMain, protocol, dialog, nativeImage } fro
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { TwelveLabs } from 'twelvelabs-js'
-import { BedrockAgentRuntimeClient, CreateSessionCommand, EndSessionCommand } from '@aws-sdk/client-bedrock-agent-runtime'
 
 import icon from '../../resources/icon.png?asset'
 import fs from 'fs';
@@ -198,28 +197,8 @@ function initializeAppPaths() {
 // In-memory session storage (cleared when app closes)
 let agentSessionId = null;
 
-// Create Bedrock Agent Runtime client for session management
-function createBedrockRuntimeClient() {
-  const config = {
-    region: 'us-east-1',
-  };
-  
-  // Only add credentials if both are provided
-  if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
-    config.credentials = {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    };
-  }
-  // Otherwise, AWS SDK will use default credential provider chain
-  
-  return new BedrockAgentRuntimeClient(config);
-}
-
 // Lambda Function URL for streaming agent responses
 const LAMBDA_STREAMING_URL = process.env.LAMBDA_STREAMING_URL || 'https://qakcm2ekpcpuahjm7oazez76om0zssfs.lambda-url.us-east-1.on.aws/';
-
-let runtimeClient = null; // For session management
 
 // FFmpeg setup - handle both dev and production paths
 let ffmpegPath = null;
@@ -354,10 +333,13 @@ async function _check_index(apiKey) {
     const indexPager = await twelvelabsClient.indexes.list();
     for await (const index of indexPager) {
       if (index.indexName === 'strands-dev') {
+        console.log('Index found:', index);
         return index;
       }
     }
     
+    console.log('Index not found, creating index');
+
     const index = await twelvelabsClient.indexes.create({
       indexName: 'strands-dev',
       models: [
@@ -403,10 +385,6 @@ async function _index_video(apiKey, index, filepath) {
       }
     })
 
-    if (task.status !== "ready") {
-      throw new Error('Task failed to complete');
-    }
-
     const videoTaskContent = await twelvelabsClient.tasks.retrieve(indexTask.id);
 
     if (!videoTaskContent || !videoTaskContent.hls || !videoTaskContent.hls.videoUrl || !videoTaskContent.videoId || !videoTaskContent.indexId || !videoTaskContent.createdAt) {
@@ -421,8 +399,15 @@ async function _index_video(apiKey, index, filepath) {
     }
 
   } catch (error) {
-    console.error('Error indexing video:', error);
-    return null;
+    // Log full error details for debugging
+    console.error('Error in _index_video:', {
+      message: error?.message,
+      name: error?.name,
+      stack: error?.stack,
+      error: error
+    });
+    // Re-throw the error so the caller can handle it properly
+    throw error;
   }
 }
 
@@ -454,32 +439,18 @@ async function _check_video_id(apiKey, videoId, indexId) {
 }
 
 async function _create_agent_session() {
-  // Return existing session ID if available
-  if (agentSessionId) {
-    return agentSessionId;
+  // Generate random session ID - ensure it's at least 33 characters
+  let sessionId = crypto.randomUUID();
+  
+  // crypto.randomUUID() always returns 36 characters, but ensure minimum 33 for robustness
+  if (sessionId.length < 33) {
+    // If somehow shorter, append random hex characters to reach 33+
+    const additionalChars = crypto.randomBytes(Math.ceil((33 - sessionId.length) / 2)).toString('hex');
+    sessionId = sessionId + additionalChars.substring(0, 33 - sessionId.length);
   }
-
-  try {
-    // Lazy initialization of runtime client for session management
-    if (!runtimeClient) {
-      runtimeClient = createBedrockRuntimeClient();
-    }
-    
-    const command = new CreateSessionCommand({})
-    const response = await runtimeClient.send(command)
-    
-    // Store session ID in memory (persists for app lifetime)
-    agentSessionId = response.sessionId;
-    console.log('Agent session created:', agentSessionId);
-    
-    return agentSessionId;
-  } catch (error) {
-    console.error('Error creating agent session:', error)
-    // Reset client on error so it can be recreated with potentially updated credentials
-    runtimeClient = null;
-    agentSessionId = null;
-    return null
-  }
+  
+  agentSessionId = sessionId;
+  return sessionId;
 }
 
 function _get_agent_session() {
@@ -488,35 +459,8 @@ function _get_agent_session() {
 }
 
 async function _end_agent_session() {
-  // End the agent session if one exists
-  if (!agentSessionId) {
-    console.log('No active session to end');
-    return;
-  }
-
-  try {
-    // Ensure runtime client is initialized
-    if (!runtimeClient) {
-      runtimeClient = createBedrockRuntimeClient();
-    }
-
-    const command = new EndSessionCommand({
-      sessionIdentifier: agentSessionId
-    });
-
-    const response = await runtimeClient.send(command);
-    console.log('Agent session ended successfully:', {
-      sessionId: response.sessionId,
-      sessionStatus: response.sessionStatus
-    });
-
-    // Clear session ID
-    agentSessionId = null;
-  } catch (error) {
-    console.error('Error ending agent session:', error);
-    // Still clear the session ID even if ending fails
-    agentSessionId = null;
-  }
+  // Cannot end lol
+  agentSessionId = null;
 }
 
 // Register custom protocol schemes as privileged before app is ready
@@ -1171,8 +1115,13 @@ app.whenReady().then(() => {
         }
       }
 
-      const index =await _check_index(apiKey);
+      const index = await _check_index(apiKey);
       const videoContent = await _index_video(apiKey, index, filepath);
+
+      // Check if videoContent is null or invalid
+      if (!videoContent) {
+        throw new Error('Video indexing returned null or invalid content');
+      }
 
       videoMap[videoFileHash] = videoContent;
       await fsp.writeFile(videoMapPath, JSON.stringify(videoMap, null, 2));
@@ -1185,12 +1134,35 @@ app.whenReady().then(() => {
       }
 
     } catch (error) {
+      // Extract error message more robustly
+      let errorMessage = 'Unknown error occurred';
+      if (error) {
+        if (typeof error === 'string') {
+          errorMessage = error;
+        } else if (error.message) {
+          errorMessage = error.message;
+        } else if (error.toString && typeof error.toString === 'function') {
+          errorMessage = error.toString();
+        } else {
+          // Try to stringify the error object
+          try {
+            errorMessage = JSON.stringify(error);
+          } catch (e) {
+            errorMessage = 'Error object could not be serialized';
+          }
+        }
+      }
       
-      console.error('Error indexing video:', error);
+      console.error('Error indexing video:', {
+        message: errorMessage,
+        error: error,
+        stack: error?.stack,
+        name: error?.name
+      });
       
       return {
         success: false,
-        error: error.message,
+        error: errorMessage,
         content: null
       }
     }
