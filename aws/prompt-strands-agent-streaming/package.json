@@ -1,0 +1,16 @@
+{
+  "name": "prompt-strands-agent-streaming",
+  "version": "1.0.0",
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": {
+    "test": "node test.js",
+    "test:streaming": "node test.js"
+  },
+  "author": "",
+  "license": "ISC",
+  "description": "Lambda function for streaming responses from AWS Bedrock AgentCore",
+  "dependencies": {
+    "@aws-sdk/client-bedrock-agentcore": "^3.936.0"
+  }
+}

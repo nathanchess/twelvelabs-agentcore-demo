@@ -5,3 +5,15 @@
 /custom_tools/__pycache__
 /test
 /slack_events
+
+/aws/prompt-strands-agent-streaming/node_modules
+/aws/prompt-strands-agent-streaming/dist
+/aws/prompt-strands-agent-streaming/build
+/aws/prompt-strands-agent-streaming/out
+/aws/prompt-strands-agent-streaming/test
+/aws/prompt-strands-agent-streaming/test.js
+/aws/prompt-strands-agent-streaming/test.ps1
+/aws/prompt-strands-agent-streaming/test.sh
+/aws/prompt-strands-agent-streaming/test.bat
+/aws/prompt-strands-agent-streaming/test.exe
+/aws/prompt-strands-agent-streaming/test.py
