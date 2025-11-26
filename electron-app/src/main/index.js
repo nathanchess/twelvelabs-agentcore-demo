@@ -3,7 +3,6 @@ import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { TwelveLabs } from 'twelvelabs-js'
 import { BedrockAgentRuntimeClient, CreateSessionCommand, EndSessionCommand } from '@aws-sdk/client-bedrock-agent-runtime'
-import { BedrockAgentCoreClient, InvokeAgentRuntimeCommand } from '@aws-sdk/client-bedrock-agentcore'
 
 import icon from '../../resources/icon.png?asset'
 import fs from 'fs';
@@ -11,6 +10,8 @@ import fsp from 'fs/promises'
 import path from 'path';
 import os from 'os';
 import crypto from 'crypto';
+import https from 'https';
+import http from 'http';
 
 // Logging setup for production
 let logFileStream = null;
@@ -121,6 +122,10 @@ function initializeAppPaths() {
 
   if (!sessionTempDir) {
     try {
+      // Initialize paths using app.getPath() - must be called after app is ready
+      sessionTempDir = path.join(app.getPath('userData'), 'sessions');
+      videoMapPath = path.join(app.getPath('userData'), 'video-map.json');
+      
       // Ensure directory exists
       if (!fs.existsSync(sessionTempDir)) {
         try {
@@ -211,26 +216,10 @@ function createBedrockRuntimeClient() {
   return new BedrockAgentRuntimeClient(config);
 }
 
-// Create Bedrock Agent Core client for invoking agents
-function createBedrockAgentCoreClient() {
-  const config = {
-    region: 'us-east-1',
-  };
-  
-  // Only add credentials if both are provided
-  if (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) {
-    config.credentials = {
-      accessKeyId: process.env.AWS_ACCESS_KEY_ID,
-      secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
-    };
-  }
-  // Otherwise, AWS SDK will use default credential provider chain
-  
-  return new BedrockAgentCoreClient(config);
-}
+// Lambda Function URL for streaming agent responses
+const LAMBDA_STREAMING_URL = process.env.LAMBDA_STREAMING_URL || 'https://qakcm2ekpcpuahjm7oazez76om0zssfs.lambda-url.us-east-1.on.aws/';
 
 let runtimeClient = null; // For session management
-let agentCoreClient = null; // For agent invocation
 
 // FFmpeg setup - handle both dev and production paths
 let ffmpegPath = null;
@@ -842,251 +831,185 @@ app.whenReady().then(() => {
         }
       }
 
-      // Ensure Agent Core client is initialized
-      if (!agentCoreClient) {
-        agentCoreClient = createBedrockAgentCoreClient();
-      }
+      console.log('Invoking agent via Lambda Function URL with session:', agentSessionId);
+      console.log('Input text preview:', prompt_template.substring(0, 200) + '...');
+      console.log('Lambda URL:', LAMBDA_STREAMING_URL);
 
-      // Use InvokeAgentRuntimeCommand with BedrockAgentCoreClient
-      // The agent.py expects payload.get("prompt"), so we need to send JSON
-      const payloadJson = JSON.stringify({
+      // Call Lambda Function URL instead of AWS SDK
+      const lambdaUrl = new URL(LAMBDA_STREAMING_URL);
+      const isHttps = lambdaUrl.protocol === 'https:';
+      const httpModule = isHttps ? https : http;
+
+      // Prepare request body
+      const requestBody = JSON.stringify({
+        runtimeSessionId: agentSessionId,
         prompt: prompt_template
       });
-      
-      const encoder = new TextEncoder();
-      const command = new InvokeAgentRuntimeCommand({
-        runtimeSessionId: agentSessionId,
-        agentRuntimeArn: "arn:aws:bedrock-agentcore:us-east-1:551588892732:runtime/agentv2-ygWXvkBdWG",
-        qualifier: "DEFAULT", // Optional
-        payload: encoder.encode(payloadJson) // Required: Uint8Array of JSON string
-      })
-      
-      console.log('Invoking agent with session:', agentSessionId);
-      console.log('Input text preview:', prompt_template.substring(0, 200) + '...');
 
-      const response = await agentCoreClient.send(command)
-
-      // Check for error in response
-      if (response.error || (response.response && response.response.statusCode >= 400)) {
-        const errorMessage = response.error?.message || response.error || 'Unknown error from Bedrock AgentCore';
-        console.error('Bedrock AgentCore error:', errorMessage);
-        
-        // If it's a ValidationException about tool results, reset the session
-        if (errorMessage.includes('ValidationException') && errorMessage.includes('toolResult')) {
-          console.log('Tool result mismatch detected - resetting session');
-          agentSessionId = null; // Force new session creation on next call
-          runtimeClient = null; // Reset client to ensure fresh session
-        }
-        
-        if (streamBackToUser) {
-          event.sender.send('prompt-strands-agent-error', errorMessage);
-        }
-        throw new Error(errorMessage);
-      }
-
-      // Transform response to string
-      if (response.response && typeof response.response.transformToString === 'function') {
-        let textResponse;
-        try {
-          textResponse = await response.response.transformToString();
-          console.log('Response text length:', textResponse?.length || 0);
-          console.log('Response text preview (first 500 chars):', textResponse?.substring(0, 2000) || 'empty');
-        } catch (transformError) {
-          console.error('Error transforming response to string:', transformError);
-          if (streamBackToUser) {
-            event.sender.send('prompt-strands-agent-error', `Error reading response: ${transformError.message || transformError}`);
+      // Make streaming HTTP request to Lambda
+      await new Promise((resolve, reject) => {
+        const options = {
+          hostname: lambdaUrl.hostname,
+          port: lambdaUrl.port || (isHttps ? 443 : 80),
+          path: lambdaUrl.pathname,
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'text/event-stream',
+            'Content-Length': Buffer.byteLength(requestBody)
           }
-          throw transformError;
-        }
-        
-        // Check if response contains an error message
-        if (textResponse && typeof textResponse === 'string') {
-          // Check for common error patterns in SSE format
-          if (textResponse.includes('"error"') || textResponse.includes('"error_type"') || textResponse.includes('EventLoopException') || textResponse.includes('EventLoopExecution')) {
-            console.error('Error detected in response text');
-            console.error('Response text:', textResponse);
-            try {
-              // Try to parse error from SSE format - look for JSON error objects
-              const errorMatch = textResponse.match(/"error"\s*:\s*"([^"]+)"/);
-              const errorTypeMatch = textResponse.match(/"error_type"\s*:\s*"([^"]+)"/);
-              const errorMessageMatch = textResponse.match(/"message"\s*:\s*"([^"]+)"/);
-              
-              if (errorMatch || errorTypeMatch || errorMessageMatch) {
-                const errorMsg = errorMatch?.[1] || errorMessageMatch?.[1] || errorTypeMatch?.[1] || 'Unknown error';
-                console.error('Parsed error message:', errorMsg);
+        };
+
+        const req = httpModule.request(options, (res) => {
+          // Check for HTTP errors
+          if (res.statusCode >= 400) {
+            let errorBody = '';
+            res.on('data', (chunk) => { errorBody += chunk.toString(); });
+            res.on('end', () => {
+              try {
+                const error = JSON.parse(errorBody);
+                const errorMessage = error.error || `HTTP ${res.statusCode}: ${errorBody}`;
+                console.error('Lambda HTTP error:', errorMessage);
                 
                 // If it's a ValidationException about tool results, reset the session
-                if (errorMsg.includes('ValidationException') && errorMsg.includes('toolResult')) {
+                if (errorMessage.includes('ValidationException') && errorMessage.includes('toolResult')) {
                   console.log('Tool result mismatch detected - resetting session');
-                  agentSessionId = null; // Force new session creation on next call
-                  runtimeClient = null; // Reset client to ensure fresh session
+                  agentSessionId = null;
+                  runtimeClient = null;
                 }
                 
                 if (streamBackToUser) {
-                  event.sender.send('prompt-strands-agent-error', errorMsg);
+                  event.sender.send('prompt-strands-agent-error', errorMessage);
                 }
-                return {
-                  success: false,
-                  error: errorMsg
-                };
+                reject(new Error(errorMessage));
+              } catch (e) {
+                reject(new Error(`HTTP ${res.statusCode}: ${errorBody}`));
               }
-            } catch (e) {
-              // If we can't parse the error, send the raw error text
-              console.error('Could not parse error from response:', e);
-              if (streamBackToUser) {
-                event.sender.send('prompt-strands-agent-error', 'An error occurred during streaming. Check console for details.');
-              }
-              return {
-                success: false,
-                error: 'An error occurred during streaming'
-              };
-            }
+            });
+            return;
           }
-        }
-        
-        // Parse SSE format: data: "text"
-        // Preserve spacing by not trimming lines - only skip truly empty lines
-        const lines = textResponse.split('\n');
-        for (const line of lines) {
-          // Only skip completely empty lines (no content at all)
-          if (!line || line.length === 0) continue;
-          
-          // Check for SSE format without trimming (to preserve leading spaces)
-          if (line.trim().startsWith('data: ')) {
-            // Find where 'data: ' starts (accounting for leading whitespace)
-            const dataIndex = line.indexOf('data: ');
-            if (dataIndex !== -1) {
-              const data = line.substring(dataIndex + 6); // Remove 'data: ' prefix, preserve any leading whitespace before it
-              
-              // Parse JSON-encoded string (simple approach like old code)
-              // Handle JSON-encoded strings (remove quotes if present)
-              let cleanedData = data;
-              if (data.startsWith('"') && data.endsWith('"')) {
-                try {
-                  cleanedData = JSON.parse(data);
-                } catch (e) {
-                  // If not valid JSON, just remove outer quotes
-                  cleanedData = data.slice(1, -1);
-                }
-              }
-              
-              if (cleanedData && cleanedData !== '[DONE]') {
-                if (streamBackToUser) {
-                  event.sender.send('prompt-strands-agent-response', cleanedData);
-                }
-              }
-            }
-          } else if (!line.trim().startsWith(':')) {
-            // Non-SSE format line, send as-is (preserve spacing)
-            if (streamBackToUser) {
-              event.sender.send('prompt-strands-agent-response', line);
-            }
-          }
-        }
-        
-        if (streamBackToUser) {
-          event.sender.send('prompt-strands-agent-complete');
-        }
-      } else if (response.response && response.response.getReader) {
-        // Handle streaming response if transformToString is not available
-        const reader = response.response.getReader();
-        const decoder = new TextDecoder("utf-8");
-        let buffer = '';
 
-        try {
-          while (true) {
-            const { done, value } = await reader.read();
-            
-            if (done) {
-              break;
-            }
+          // Handle streaming SSE response
+          const decoder = new TextDecoder('utf-8');
+          let buffer = '';
 
-            const chunk = decoder.decode(value, { stream: true });
-            buffer += chunk;
+          res.on('data', (chunk) => {
+            buffer += decoder.decode(chunk, { stream: true });
             
             // Process complete lines (SSE format)
-            // Preserve spacing by not trimming lines unnecessarily
-            let lastNewlineIndex = buffer.lastIndexOf('\n');
-            
-            if (lastNewlineIndex !== -1) {
-              const completeLines = buffer.substring(0, lastNewlineIndex + 1);
-              buffer = buffer.substring(lastNewlineIndex + 1);
-              
-              const lines = completeLines.split('\n');
-              for (const line of lines) {
-                // Only skip completely empty lines
-                if (!line || line.length === 0) continue;
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || ''; // Keep incomplete line in buffer
 
-                console.log("LINE:", line);
-                
-                // Check for SSE format without trimming (to preserve leading spaces)
-                if (line.trim().startsWith('data: ')) {
-                  const dataIndex = line.indexOf('data: ');
-                  if (dataIndex !== -1) {
-                    const data = line.substring(dataIndex + 6);
-                    // Handle JSON-encoded strings (simple approach like old code)
-                    let cleanedData = data;
-                    if (data.startsWith('"') && data.endsWith('"')) {
-                      try {
-                        cleanedData = JSON.parse(data);
-                      } catch (e) {
-                        // If not valid JSON, just remove outer quotes
-                        cleanedData = data.slice(1, -1);
-                      }
+            for (const line of lines) {
+              // Only skip completely empty lines
+              if (!line || line.length === 0) continue;
+
+              console.log("LINE:", line);
+              
+              // Check for SSE format without trimming (to preserve leading spaces)
+              if (line.trim().startsWith('data: ')) {
+                const dataIndex = line.indexOf('data: ');
+                if (dataIndex !== -1) {
+                  const data = line.substring(dataIndex + 6);
+                  
+                  // Handle JSON-encoded strings (simple approach like old code)
+                  let cleanedData = data;
+                  if (data.startsWith('"') && data.endsWith('"')) {
+                    try {
+                      cleanedData = JSON.parse(data);
+                    } catch (e) {
+                      // If not valid JSON, just remove outer quotes
+                      cleanedData = data.slice(1, -1);
+                    }
+                  }
+                  
+                  // Check for errors in SSE data
+                  if (cleanedData && typeof cleanedData === 'object' && cleanedData.error) {
+                    const errorMsg = cleanedData.error;
+                    console.error('Error in SSE stream:', errorMsg);
+                    
+                    // If it's a ValidationException about tool results, reset the session
+                    if (errorMsg.includes('ValidationException') && errorMsg.includes('toolResult')) {
+                      console.log('Tool result mismatch detected - resetting session');
+                      agentSessionId = null;
+                      runtimeClient = null;
                     }
                     
-                    if (cleanedData && cleanedData !== '[DONE]') {
-                      if (streamBackToUser) {
-                        event.sender.send('prompt-strands-agent-response', cleanedData);
-                      }
+                    if (streamBackToUser) {
+                      event.sender.send('prompt-strands-agent-error', errorMsg);
+                    }
+                    reject(new Error(errorMsg));
+                    return;
+                  }
+                  
+                  if (cleanedData && cleanedData !== '[DONE]') {
+                    if (streamBackToUser) {
+                      event.sender.send('prompt-strands-agent-response', cleanedData);
                     }
                   }
-                } else if (!line.trim().startsWith(':')) {
-                  // Non-SSE format line, send as-is (preserve spacing)
-                  if (streamBackToUser) {
-                    event.sender.send('prompt-strands-agent-response', line);
+                }
+              } else if (!line.trim().startsWith(':')) {
+                // Non-SSE format line, send as-is (preserve spacing)
+                if (streamBackToUser) {
+                  event.sender.send('prompt-strands-agent-response', line);
+                }
+              }
+            }
+          });
+
+          res.on('end', () => {
+            // Process any remaining buffer
+            if (buffer && buffer.trim()) {
+              const trimmedBuffer = buffer.trim();
+              if (trimmedBuffer.startsWith('data: ')) {
+                const data = trimmedBuffer.substring(6);
+                let cleanedData = data;
+                if (data.startsWith('"') && data.endsWith('"')) {
+                  try {
+                    cleanedData = JSON.parse(data);
+                  } catch (e) {
+                    cleanedData = data.slice(1, -1);
                   }
                 }
-              }
-            }
-          }
-
-          // Process any remaining buffer
-          if (buffer && buffer.trim()) {
-            const trimmedBuffer = buffer.trim();
-            if (trimmedBuffer.startsWith('data: ')) {
-              const data = trimmedBuffer.substring(6);
-              // Handle JSON-encoded strings (simple approach like old code)
-              let cleanedData = data;
-              if (data.startsWith('"') && data.endsWith('"')) {
-                try {
-                  cleanedData = JSON.parse(data);
-                } catch (e) {
-                  // If not valid JSON, just remove outer quotes
-                  cleanedData = data.slice(1, -1);
+                if (cleanedData && cleanedData !== '[DONE]') {
+                  if (streamBackToUser) {
+                    event.sender.send('prompt-strands-agent-response', cleanedData);
+                  }
                 }
-              }
-              if (cleanedData && cleanedData !== '[DONE]') {
+              } else if (!trimmedBuffer.startsWith(':')) {
                 if (streamBackToUser) {
-                  event.sender.send('prompt-strands-agent-response', cleanedData);
+                  event.sender.send('prompt-strands-agent-response', trimmedBuffer);
                 }
               }
-            } else if (!trimmedBuffer.startsWith(':')) {
-              // Non-SSE format, send as-is
-              if (streamBackToUser) {
-                event.sender.send('prompt-strands-agent-response', trimmedBuffer);
-              }
             }
-          }
-          
+            
+            if (streamBackToUser) {
+              event.sender.send('prompt-strands-agent-complete');
+            }
+            resolve();
+          });
+
+          res.on('error', (error) => {
+            console.error('Error reading Lambda response stream:', error);
+            if (streamBackToUser) {
+              event.sender.send('prompt-strands-agent-error', error.message);
+            }
+            reject(error);
+          });
+        });
+
+        req.on('error', (error) => {
+          console.error('Error making Lambda request:', error);
           if (streamBackToUser) {
-            event.sender.send('prompt-strands-agent-complete');
+            event.sender.send('prompt-strands-agent-error', error.message);
           }
-        } catch (streamError) {
-          console.error('Error reading response stream:', streamError);
-          throw streamError;
-        }
-      }
+          reject(error);
+        });
+
+        // Send request body
+        req.write(requestBody);
+        req.end();
+      });
 
     } catch (error) {
       console.error('Error prompting strands agent:', error);
@@ -1094,9 +1017,6 @@ app.whenReady().then(() => {
         name: error.name,
         message: error.message,
         code: error.code,
-        statusCode: error.$metadata?.httpStatusCode,
-        requestId: error.$metadata?.requestId,
-        fault: error.$fault,
         stack: error.stack
       });
       
@@ -1104,8 +1024,6 @@ app.whenReady().then(() => {
       let errorMessage = error.message || 'Unknown error occurred';
       if (error.message && error.message.includes('EventLoopExecution')) {
         errorMessage = 'An error occurred in the agent backend. This may be due to an async event loop issue.';
-      } else if (error.$metadata?.httpStatusCode) {
-        errorMessage = `Request failed with status ${error.$metadata.httpStatusCode}: ${error.message || 'Unknown error'}`;
       }
       
       if (streamBackToUser) {
