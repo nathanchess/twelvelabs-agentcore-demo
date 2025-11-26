@@ -85,19 +85,42 @@ function setupLogging() {
 // App Constants - Initialize on app ready
 let sessionTempDir = null;
 let videoMapPath = null;
+let zoomVideoPath = null;
+
+/**
+ * Get the Zoom directory path for the current platform and ensure it exists
+ * @returns {string} The path to the Zoom directory
+ */
+function getZoomDirectoryPath() {
+  const platform = os.platform();
+  let directoryPath = '';
+
+  if (platform === 'win32') {
+    const systemRoot = path.parse(process.cwd()).root;
+    directoryPath = path.join(systemRoot, 'Users', os.userInfo().username, 'Documents', 'Zoom');
+  } else if (platform === 'darwin') {
+    directoryPath = path.join(os.homedir(), 'Documents', 'Zoom');
+  } else {
+    throw new Error('Unsupported platform: ' + platform);
+  }
+
+  // Create the directory if it doesn't exist
+  if (!fs.existsSync(directoryPath)) {
+    fs.mkdirSync(directoryPath, { recursive: true });
+    console.log('Created Zoom directory:', directoryPath);
+  }
+
+  return directoryPath;
+}
 
 function initializeAppPaths() {
+
+  if (!zoomVideoPath) {
+    zoomVideoPath = getZoomDirectoryPath();
+  }
+
   if (!sessionTempDir) {
     try {
-      const tempPath = app.getPath('temp');
-      console.log('Temp path:', tempPath);
-      
-      sessionTempDir = path.join(tempPath, 'tl-video-agent-session');
-      videoMapPath = path.join(sessionTempDir, 'video-map.json');
-      
-      console.log('Session temp dir:', sessionTempDir);
-      console.log('Video map path:', videoMapPath);
-      
       // Ensure directory exists
       if (!fs.existsSync(sessionTempDir)) {
         try {
@@ -1166,21 +1189,8 @@ app.whenReady().then(() => {
 
   ipcMain.handle('upload-video', async (event, filePath, targetFileName) => {
     try {
-      const platform = os.platform();
-      let directoryPath = '';
-
-      if (platform === 'win32') {
-        const systemRoot = path.parse(process.cwd()).root;
-        directoryPath = path.join(systemRoot, 'Users', os.userInfo().username, 'Documents', 'Zoom');
-      } else if (platform === 'darwin') {
-        directoryPath = path.join(os.homedir(), 'Documents', 'Zoom');
-      } else {
-        throw new Error('Unsupported platform: ' + platform);
-      }
-
-      if (!fs.existsSync(directoryPath)) {
-        throw new Error('Directory does not exist. ' + directoryPath);
-      }
+      // Get Zoom directory path and ensure it exists
+      const directoryPath = getZoomDirectoryPath();
 
       const newFilePath = path.join(directoryPath, targetFileName + path.extname(filePath));
       await fsp.copyFile(filePath, newFilePath, fs.constants.COPYFILE_EXCL);
@@ -1396,22 +1406,8 @@ app.whenReady().then(() => {
   ipcMain.handle('scan-folder', async (event) => {
   
       try {
-  
-        const platform = os.platform();
-        let directoryPath = '';
-  
-        if (platform === 'win32') {
-          const systemRoot = path.parse(process.cwd()).root;
-          directoryPath = path.join(systemRoot, 'Users', os.userInfo().username, 'Documents', 'Zoom');
-        } else if (platform === 'darwin') {
-          directoryPath = path.join(os.homedir(), 'Documents', 'Zoom');
-        } else {
-          throw new Error('Unsupported platform: ' + platform);
-        }
-  
-        if (!fs.existsSync(directoryPath)) {
-          throw new Error('Directory does not exist. ' + directoryPath);
-        }
+        // Get Zoom directory path and ensure it exists
+        const directoryPath = getZoomDirectoryPath();
     
         const files = fs.readdirSync(directoryPath);
         const videoFiles = files.filter(file => file.endsWith('.mp4'));
