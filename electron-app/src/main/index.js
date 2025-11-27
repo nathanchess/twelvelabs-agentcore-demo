@@ -119,11 +119,43 @@ function initializeAppPaths() {
     zoomVideoPath = getZoomDirectoryPath();
   }
 
+  const platform = os.platform();
+
   if (!sessionTempDir) {
     try {
-      // Initialize paths using app.getPath() - must be called after app is ready
-      sessionTempDir = path.join(app.getPath('userData'), 'sessions');
-      videoMapPath = path.join(app.getPath('userData'), 'video-map.json');
+      // Initialize paths using platform-specific logic
+      // Windows: C:\Users\<username>\AppData\Local\strands-agent\sessions
+      // macOS: ~/Library/Application Support/strands-agent/sessions
+      // Linux: ~/.config/strands-agent/sessions
+      let baseDir;
+      if (platform === 'win32') {
+        // Use Local AppData on Windows (same as setupLogging)
+        const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+        baseDir = path.join(localAppData, 'strands-agent');
+      } else {
+        // Use userData for macOS/Linux (same as setupLogging)
+        baseDir = app.getPath('userData');
+      }
+      
+      sessionTempDir = path.join(baseDir, 'sessions');
+      videoMapPath = path.join(baseDir, 'video-map.json');
+      
+      // Ensure base directory exists
+      if (!fs.existsSync(baseDir)) {
+        try {
+          fs.mkdirSync(baseDir, { recursive: true });
+          console.log('✓ Created base directory:', baseDir);
+        } catch (mkdirError) {
+          console.error('✗ Failed to create base directory:', mkdirError);
+          console.error('Error details:', {
+            code: mkdirError.code,
+            errno: mkdirError.errno,
+            path: mkdirError.path,
+            syscall: mkdirError.syscall
+          });
+          throw mkdirError;
+        }
+      }
       
       // Ensure directory exists
       if (!fs.existsSync(sessionTempDir)) {
