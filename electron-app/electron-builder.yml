@@ -43,7 +43,6 @@ mac:
     - target: dmg
       arch:
         - x64
-        - arm64
   icon: build/icon.icns  # Keep using .icns format for macOS (you can replace this file with TwelveLabs logo converted to .icns)
   # entitlementsInherit: build/entitlements.mac.plist  # Disabled - requires code signing
   hardenedRuntime: false  # Disabled - requires code signing which we don't have
