@@ -11,11 +11,7 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # Use macos-13 (Ventura) instead of macos-latest (Sonoma/Sequoia)
-        # Combined with MACOSX_DEPLOYMENT_TARGET=11.0, this ensures binaries
-        # are compatible with macOS 11.7.1 (Big Sur) and newer versions
-        # Note: macos-12 was deprecated by GitHub in late 2024
-        os: [windows-latest, macos-13]
+        os: [windows-latest, macos-latest]
     
     steps:
       - uses: actions/checkout@v4
@@ -30,24 +26,18 @@ jobs:
       - name: Install dependencies
         working-directory: electron-app
         shell: bash
-        env:
-          # Set deployment target for macOS 11.0 (Big Sur) compatibility
-          # This tells the compiler to only use APIs available in macOS 11.0+
-          MACOSX_DEPLOYMENT_TARGET: "11.0"
         run: |
           # Clear npm cache to avoid optional dependency issues
           npm cache clean --force || true
           # Remove node_modules and package-lock.json to ensure clean install
           rm -rf node_modules package-lock.json
           # Install dependencies - this ensures optional dependencies are included
-          # npm has a bug with optional dependencies: https://github.com/npm/cli/issues/4828
           npm install
-          # Explicitly install rollup native modules if they're still missing (workaround for npm bug)
-          # Only needed on macOS, but harmless on Windows
+          # Explicitly install rollup native modules if missing (workaround for npm bug)
           npm install @rollup/rollup-darwin-arm64 @rollup/rollup-darwin-x64 --save-optional || true
       
       - name: Install Mac::Finder::DSStore Perl module (macOS only)
-        if: matrix.os == 'macos-13'
+        if: matrix.os == 'macos-latest'
         run: |
           # CRITICAL: electron-builder uses SYSTEM Perl, not Homebrew Perl
           # Detect system Perl version
@@ -134,9 +124,6 @@ jobs:
       - name: Build app
         working-directory: electron-app
         run: npm run build
-        env:
-          # Set deployment target for macOS 11.0 (Big Sur) compatibility
-          MACOSX_DEPLOYMENT_TARGET: "11.0"
       
       - name: Build Windows installer
         if: matrix.os == 'windows-latest'
@@ -146,7 +133,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
       
       - name: Clean up any mounted DMGs before build
-        if: matrix.os == 'macos-13'
+        if: matrix.os == 'macos-latest'
         run: |
           # Clean up any leftover mounted DMGs from previous runs
           # Retry logic for stubborn mounts
@@ -172,22 +159,20 @@ jobs:
           sleep 2
       
       - name: Build macOS DMG
-        if: matrix.os == 'macos-13'
+        if: matrix.os == 'macos-latest'
         working-directory: electron-app
         run: npm run build:mac || (echo "Build completed with warnings, checking artifacts..." && ls -la dist/ || exit 1)
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
-          # Critical: Set deployment target to ensure binary compatibility with macOS 11.0+
-          MACOSX_DEPLOYMENT_TARGET: "11.0"
       
       - name: Wait for DMG operations to complete
-        if: matrix.os == 'macos-13'
+        if: matrix.os == 'macos-latest'
         run: |
           # Wait a bit for any ongoing DMG operations to complete
           sleep 5
       
       - name: Clean up mounted DMGs after build
-        if: matrix.os == 'macos-13'
+        if: matrix.os == 'macos-latest'
         run: |
           # Clean up any mounted DMGs after build with retry logic
           # Wait a moment first to let any final operations complete
