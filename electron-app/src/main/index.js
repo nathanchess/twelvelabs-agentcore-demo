@@ -126,7 +126,6 @@ function initializeAppPaths() {
       // Initialize paths using platform-specific logic
       // Windows: C:\Users\<username>\AppData\Local\strands-agent\sessions
       // macOS: ~/Library/Application Support/strands-agent/sessions
-      // Linux: ~/.config/strands-agent/sessions
       let baseDir;
       if (platform === 'win32') {
         // Use Local AppData on Windows (same as setupLogging)

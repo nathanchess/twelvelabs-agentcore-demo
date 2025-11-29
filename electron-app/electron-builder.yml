@@ -47,6 +47,7 @@ mac:
   entitlementsInherit: build/entitlements.mac.plist
   hardenedRuntime: true
   gatekeeperAssess: false
+  minimumSystemVersion: "11.0"  # Support macOS Big Sur 11.0+ (required for Big Sur 11.7.1)
   extendInfo:
     - NSCameraUsageDescription: Application requests access to the device's camera.
     - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
