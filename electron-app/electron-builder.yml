@@ -8,6 +8,7 @@ files:
   - '!electron.vite.config.{js,ts,mjs,cjs}'
   - '!{.eslintcache,eslint.config.mjs,.prettierignore,.prettierrc.yaml,dev-app-update.yml,CHANGELOG.md,README.md}'
   - '!{.env,.env.*,.npmrc,pnpm-lock.yaml}'
+  - '!**/node_modules/aws-crt/**/*'  # Exclude aws-crt (optional AWS SDK dependency, not needed for Electron builds)
 asarUnpack:
   - resources/**
   - "**/node_modules/@ffmpeg-installer/**/*"
@@ -71,7 +72,7 @@ linux:
   category: Utility
 appImage:
   artifactName: ${name}-${version}.${ext}
-npmRebuild: false
+npmRebuild: false  # Disable native module rebuilding (aws-crt is optional and not needed)
 
 # Environment variables for production builds
 # Set these before building:
