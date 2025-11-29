@@ -49,10 +49,11 @@ mac:
   gatekeeperAssess: false
   minimumSystemVersion: "11.0"  # Support macOS Big Sur 11.0+ (required for Big Sur 11.7.1)
   extendInfo:
-    - NSCameraUsageDescription: Application requests access to the device's camera.
-    - NSMicrophoneUsageDescription: Application requests access to the device's microphone.
-    - NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
-    - NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
+    LSMinimumSystemVersion: "11.0"  # Explicitly set in Info.plist to override Electron 38 default
+    NSCameraUsageDescription: Application requests access to the device's camera.
+    NSMicrophoneUsageDescription: Application requests access to the device's microphone.
+    NSDocumentsFolderUsageDescription: Application requests access to the user's Documents folder.
+    NSDownloadsFolderUsageDescription: Application requests access to the user's Downloads folder.
   # Notarization is handled via environment variables (APPLE_ID, APPLE_APP_SPECIFIC_PASSWORD, APPLE_TEAM_ID)
   # electron-builder will automatically notarize if these are set and code signing is enabled
 dmg:
