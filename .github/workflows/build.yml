@@ -11,7 +11,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        os: [windows-latest, macos-latest]
+        # Use macos-12 (Monterey) instead of macos-latest (Sonoma/Sequoia)
+        # This ensures binaries are compiled against older system libraries
+        # compatible with macOS 11.7.1 (Big Sur) and newer versions
+        os: [windows-latest, macos-12]
     
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +29,10 @@ jobs:
       - name: Install dependencies
         working-directory: electron-app
         shell: bash
+        env:
+          # Set deployment target for macOS 11.0 (Big Sur) compatibility
+          # This tells the compiler to only use APIs available in macOS 11.0+
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
         run: |
           # Clear npm cache to avoid optional dependency issues
           npm cache clean --force || true
@@ -39,67 +46,78 @@ jobs:
           npm install @rollup/rollup-darwin-arm64 @rollup/rollup-darwin-x64 --save-optional || true
       
       - name: Install Mac::Finder::DSStore Perl module (macOS only)
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-12'
         run: |
-          # CRITICAL: electron-builder uses SYSTEM Perl (/usr/bin/perl 5.34), not Homebrew Perl
+          # CRITICAL: electron-builder uses SYSTEM Perl, not Homebrew Perl
+          # Detect system Perl version
+          PERL_VERSION=$(/usr/bin/perl -e 'print $^V' | sed 's/v//')
+          PERL_MAJOR_VERSION=$(echo $PERL_VERSION | cut -d. -f1,2)
+          echo "System Perl version: $PERL_VERSION (major: $PERL_MAJOR_VERSION)"
+          
           # Install cpanminus first
           brew install cpanminus
+          
           # Install required modules to Homebrew Perl location first (cpanm default)
-          # Mac::Memory is a dependency that electron-builder's DMG script needs
           cpanm --notest Mac::Finder::DSStore Mac::Memory Mac::PropertyList || true
-          # Find where it was installed (Homebrew Perl location)
-          # Use find to locate the module
-          HOMEBREW_MODULE_PATH=$(find /opt/homebrew -name "DSStore.pm" -path "*/Mac/Finder/*" 2>/dev/null | head -1)
+          
+          # Find where it was installed - check both Intel (/usr/local) and ARM (/opt/homebrew) paths
+          HOMEBREW_MODULE_PATH=""
+          for search_path in /opt/homebrew /usr/local; do
+            if [ -z "$HOMEBREW_MODULE_PATH" ] || [ ! -f "$HOMEBREW_MODULE_PATH" ]; then
+              HOMEBREW_MODULE_PATH=$(find "$search_path" -name "DSStore.pm" -path "*/Mac/Finder/*" 2>/dev/null | head -1)
+            fi
+          done
+          
           # If not found, try using Homebrew Perl to locate it
           if [ -z "$HOMEBREW_MODULE_PATH" ] || [ ! -f "$HOMEBREW_MODULE_PATH" ]; then
-            if [ -f "/opt/homebrew/bin/perl" ]; then
-              HOMEBREW_MODULE_PATH=$(/opt/homebrew/bin/perl -MFile::Spec -e 'for(@INC) { my $p = File::Spec->catfile($_, "Mac", "Finder", "DSStore.pm"); print "$p\n" and exit if -f $p }' 2>/dev/null | head -1)
-            fi
+            for perl_path in /opt/homebrew/bin/perl /usr/local/bin/perl; do
+              if [ -f "$perl_path" ]; then
+                HOMEBREW_MODULE_PATH=$($perl_path -MFile::Spec -e 'for(@INC) { my $p = File::Spec->catfile($_, "Mac", "Finder", "DSStore.pm"); print "$p\n" and exit if -f $p }' 2>/dev/null | head -1)
+                [ -n "$HOMEBREW_MODULE_PATH" ] && [ -f "$HOMEBREW_MODULE_PATH" ] && break
+              fi
+            done
           fi
+          
           if [ -n "$HOMEBREW_MODULE_PATH" ] && [ -f "$HOMEBREW_MODULE_PATH" ]; then
             echo "Found module at: $HOMEBREW_MODULE_PATH"
-            # Create system Perl directory structure
-            sudo mkdir -p /Library/Perl/5.34/Mac/Finder
+            # Create system Perl directory structure using detected version
+            sudo mkdir -p "/Library/Perl/$PERL_MAJOR_VERSION/Mac/Finder"
             # Copy the module to system Perl location
-            sudo cp "$HOMEBREW_MODULE_PATH" /Library/Perl/5.34/Mac/Finder/DSStore.pm
+            sudo cp "$HOMEBREW_MODULE_PATH" "/Library/Perl/$PERL_MAJOR_VERSION/Mac/Finder/DSStore.pm"
             # Also copy the entire Finder directory if it exists
             HOMEBREW_FINDER_DIR=$(dirname "$HOMEBREW_MODULE_PATH")
             if [ -d "$HOMEBREW_FINDER_DIR" ]; then
-              sudo cp -r "$HOMEBREW_FINDER_DIR"/* /Library/Perl/5.34/Mac/Finder/ 2>/dev/null || true
+              sudo cp -r "$HOMEBREW_FINDER_DIR"/* "/Library/Perl/$PERL_MAJOR_VERSION/Mac/Finder/" 2>/dev/null || true
             fi
             echo "Module copied to system Perl location"
           else
             echo "ERROR: Could not find installed module"
-            echo "Searching for module..."
-            find /opt/homebrew -name "DSStore.pm" 2>/dev/null || true
+            echo "Searching for module in common paths..."
+            find /opt/homebrew /usr/local -name "DSStore.pm" 2>/dev/null || true
             exit 1
           fi
+          
           # Mac::Memory and Mac::Files failed to install (requires Mac-Carbon which doesn't work on 64-bit)
           # Create minimal stub modules to satisfy the import requirements
           echo "Creating stub Mac::Memory and Mac::Files modules (Mac-Carbon not available on 64-bit)"
-          sudo mkdir -p /Library/Perl/5.34/Mac
+          sudo mkdir -p "/Library/Perl/$PERL_MAJOR_VERSION/Mac"
+          
           # Create Mac::Memory stub
-          printf 'package Mac::Memory;\n# Stub module - Mac-Carbon does not work on 64-bit systems\n# This minimal stub satisfies the import requirement for electron-builder\nuse strict;\nuse warnings;\nour $VERSION = '\''0.82'\'';\n1;\n' | sudo tee /Library/Perl/5.34/Mac/Memory.pm > /dev/null
+          printf 'package Mac::Memory;\nuse strict;\nuse warnings;\nour $VERSION = '\''0.82'\'';\n1;\n' | sudo tee "/Library/Perl/$PERL_MAJOR_VERSION/Mac/Memory.pm" > /dev/null
+          
           # Create Mac::Files stub with comprehensive function stubs
-          printf 'package Mac::Files;\n# Stub module - Mac-Carbon does not work on 64-bit systems\n# This comprehensive stub satisfies all import requirements for electron-builder\nuse strict;\nuse warnings;\nour $VERSION = '\''0.82'\'';\n# Create a comprehensive alias object class with all common methods\npackage Mac::Files::Alias;\nsub new {\n  my ($class, $target) = @_;\n  my $self = bless { \n    data => pack("C*", 0x00, 0x00, 0x00, 0x00),\n    target => $target || ""\n  }, $class;\n  return $self;\n}\nsub size {\n  my ($self) = @_;\n  return length($self->{data});\n}\nsub data {\n  my ($self) = @_;\n  return $self->{data};\n}\nsub get {\n  my ($self, $key) = @_;\n  # Return data for common keys\n  return $self->{data} if $key eq '\''data'\'';\n  return $self->{target} if $key eq '\''target'\'';\n  return length($self->{data}) if $key eq '\''size'\'';\n  return "";\n}\nsub resolve {\n  my ($self) = @_;\n  return $self->{target} || "";\n}\nsub target {\n  my ($self) = @_;\n  return $self->{target} || "";\n}\n# AUTOLOAD to handle any other method calls\nsub AUTOLOAD {\n  my ($self) = @_;\n  my $method = our $AUTOLOAD;\n  $method =~ s/.*:://;\n  return "" if $method ne '\''DESTROY'\'';\n}\npackage Mac::Files;\n# Stub functions that electron-builder DMG script might call\nsub NewAlias {\n  my ($target) = @_;\n  return Mac::Files::Alias->new($target);\n}\nsub NewAliasMinimal {\n  my ($target) = @_;\n  return Mac::Files::Alias->new($target);\n}\nsub ResolveAlias {\n  my ($alias) = @_;\n  if (ref($alias) && $alias->isa('\''Mac::Files::Alias'\'')) {\n    return $alias->resolve();\n  }\n  return "";\n}\nsub GetAliasInfo {\n  my ($alias, $key) = @_;\n  if (ref($alias) && $alias->isa('\''Mac::Files::Alias'\'')) {\n    return $alias->get($key);\n  }\n  return "";\n}\n# Export to main namespace for compatibility\n*main::NewAlias = \\&NewAlias;\n*main::NewAliasMinimal = \\&NewAliasMinimal;\n*main::ResolveAlias = \\&ResolveAlias;\n*main::GetAliasInfo = \\&GetAliasInfo;\n1;\n' | sudo tee /Library/Perl/5.34/Mac/Files.pm > /dev/null
-          # Ensure proper permissions on the stub modules
-          sudo chmod 644 /Library/Perl/5.34/Mac/Memory.pm
-          sudo chmod 644 /Library/Perl/5.34/Mac/Files.pm
-          sudo chmod 755 /Library/Perl/5.34/Mac
-          echo "Stub Mac::Memory and Mac::Files modules created with proper permissions"
-          # Verify using SYSTEM Perl (what electron-builder uses)
-          /usr/bin/perl -MMac::Finder::DSStore -e 'print "Mac::Finder::DSStore verified\n"' || {
-            echo "ERROR: Mac::Finder::DSStore verification failed"
-            exit 1
-          }
-          /usr/bin/perl -MMac::Memory -e 'print "Mac::Memory verified\n"' || {
-            echo "ERROR: Mac::Memory verification failed"
-            exit 1
-          }
-          /usr/bin/perl -MMac::Files -e 'print "Mac::Files verified\n"' || {
-            echo "ERROR: Mac::Files verification failed"
-            exit 1
-          }
+          printf 'package Mac::Files;\nuse strict;\nuse warnings;\nour $VERSION = '\''0.82'\'';\npackage Mac::Files::Alias;\nsub new { my ($class, $target) = @_; bless { data => pack("C*", 0,0,0,0), target => $target || "" }, $class; }\nsub size { length(shift->{data}); }\nsub data { shift->{data}; }\nsub get { my ($self, $key) = @_; return $self->{data} if $key eq '\''data'\''; return $self->{target} if $key eq '\''target'\''; return length($self->{data}) if $key eq '\''size'\''; return ""; }\nsub resolve { shift->{target} || ""; }\nsub target { shift->{target} || ""; }\nsub AUTOLOAD { my $method = our $AUTOLOAD; $method =~ s/.*:://; return "" if $method ne '\''DESTROY'\''; }\npackage Mac::Files;\nsub NewAlias { Mac::Files::Alias->new(shift); }\nsub NewAliasMinimal { Mac::Files::Alias->new(shift); }\nsub ResolveAlias { my $a = shift; ref($a) && $a->isa('\''Mac::Files::Alias'\'') ? $a->resolve() : ""; }\nsub GetAliasInfo { my ($a, $k) = @_; ref($a) && $a->isa('\''Mac::Files::Alias'\'') ? $a->get($k) : ""; }\n*main::NewAlias = \\&NewAlias;\n*main::NewAliasMinimal = \\&NewAliasMinimal;\n*main::ResolveAlias = \\&ResolveAlias;\n*main::GetAliasInfo = \\&GetAliasInfo;\n1;\n' | sudo tee "/Library/Perl/$PERL_MAJOR_VERSION/Mac/Files.pm" > /dev/null
+          
+          # Ensure proper permissions
+          sudo chmod 644 "/Library/Perl/$PERL_MAJOR_VERSION/Mac/Memory.pm"
+          sudo chmod 644 "/Library/Perl/$PERL_MAJOR_VERSION/Mac/Files.pm"
+          sudo chmod 755 "/Library/Perl/$PERL_MAJOR_VERSION/Mac"
+          echo "Stub modules created with proper permissions"
+          
+          # Verify using SYSTEM Perl
+          /usr/bin/perl -MMac::Finder::DSStore -e 'print "Mac::Finder::DSStore verified\n"' || { echo "ERROR: Mac::Finder::DSStore verification failed"; exit 1; }
+          /usr/bin/perl -MMac::Memory -e 'print "Mac::Memory verified\n"' || { echo "ERROR: Mac::Memory verification failed"; exit 1; }
+          /usr/bin/perl -MMac::Files -e 'print "Mac::Files verified\n"' || { echo "ERROR: Mac::Files verification failed"; exit 1; }
           echo "All Perl modules verified successfully"
       
       - name: Verify electron-builder installation
@@ -115,6 +133,9 @@ jobs:
       - name: Build app
         working-directory: electron-app
         run: npm run build
+        env:
+          # Set deployment target for macOS 11.0 (Big Sur) compatibility
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
       
       - name: Build Windows installer
         if: matrix.os == 'windows-latest'
@@ -124,7 +145,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
       
       - name: Clean up any mounted DMGs before build
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-12'
         run: |
           # Clean up any leftover mounted DMGs from previous runs
           # Retry logic for stubborn mounts
@@ -150,20 +171,22 @@ jobs:
           sleep 2
       
       - name: Build macOS DMG
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-12'
         working-directory: electron-app
         run: npm run build:mac || (echo "Build completed with warnings, checking artifacts..." && ls -la dist/ || exit 1)
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
+          # Critical: Set deployment target to ensure binary compatibility with macOS 11.0+
+          MACOSX_DEPLOYMENT_TARGET: "11.0"
       
       - name: Wait for DMG operations to complete
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-12'
         run: |
           # Wait a bit for any ongoing DMG operations to complete
           sleep 5
       
       - name: Clean up mounted DMGs after build
-        if: matrix.os == 'macos-latest'
+        if: matrix.os == 'macos-12'
         run: |
           # Clean up any mounted DMGs after build with retry logic
           # Wait a moment first to let any final operations complete
