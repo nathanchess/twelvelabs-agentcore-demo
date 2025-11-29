@@ -11,10 +11,11 @@ jobs:
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
-        # Use macos-12 (Monterey) instead of macos-latest (Sonoma/Sequoia)
-        # This ensures binaries are compiled against older system libraries
-        # compatible with macOS 11.7.1 (Big Sur) and newer versions
-        os: [windows-latest, macos-12]
+        # Use macos-13 (Ventura) instead of macos-latest (Sonoma/Sequoia)
+        # Combined with MACOSX_DEPLOYMENT_TARGET=11.0, this ensures binaries
+        # are compatible with macOS 11.7.1 (Big Sur) and newer versions
+        # Note: macos-12 was deprecated by GitHub in late 2024
+        os: [windows-latest, macos-13]
     
     steps:
       - uses: actions/checkout@v4
@@ -46,7 +47,7 @@ jobs:
           npm install @rollup/rollup-darwin-arm64 @rollup/rollup-darwin-x64 --save-optional || true
       
       - name: Install Mac::Finder::DSStore Perl module (macOS only)
-        if: matrix.os == 'macos-12'
+        if: matrix.os == 'macos-13'
         run: |
           # CRITICAL: electron-builder uses SYSTEM Perl, not Homebrew Perl
           # Detect system Perl version
@@ -145,7 +146,7 @@ jobs:
           CSC_IDENTITY_AUTO_DISCOVERY: false
       
       - name: Clean up any mounted DMGs before build
-        if: matrix.os == 'macos-12'
+        if: matrix.os == 'macos-13'
         run: |
           # Clean up any leftover mounted DMGs from previous runs
           # Retry logic for stubborn mounts
@@ -171,7 +172,7 @@ jobs:
           sleep 2
       
       - name: Build macOS DMG
-        if: matrix.os == 'macos-12'
+        if: matrix.os == 'macos-13'
         working-directory: electron-app
         run: npm run build:mac || (echo "Build completed with warnings, checking artifacts..." && ls -la dist/ || exit 1)
         env:
@@ -180,13 +181,13 @@ jobs:
           MACOSX_DEPLOYMENT_TARGET: "11.0"
       
       - name: Wait for DMG operations to complete
-        if: matrix.os == 'macos-12'
+        if: matrix.os == 'macos-13'
         run: |
           # Wait a bit for any ongoing DMG operations to complete
           sleep 5
       
       - name: Clean up mounted DMGs after build
-        if: matrix.os == 'macos-12'
+        if: matrix.os == 'macos-13'
         run: |
           # Clean up any mounted DMGs after build with retry logic
           # Wait a moment first to let any final operations complete
