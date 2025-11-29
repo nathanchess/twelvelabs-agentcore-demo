@@ -25,6 +25,7 @@ jobs:
       
       - name: Install dependencies
         working-directory: electron-app
+        shell: bash
         run: |
           # Clear npm cache to avoid optional dependency issues
           npm cache clean --force || true
@@ -34,6 +35,7 @@ jobs:
           # npm has a bug with optional dependencies: https://github.com/npm/cli/issues/4828
           npm install
           # Explicitly install rollup native modules if they're still missing (workaround for npm bug)
+          # Only needed on macOS, but harmless on Windows
           npm install @rollup/rollup-darwin-arm64 @rollup/rollup-darwin-x64 --save-optional || true
       
       - name: Install Mac::Finder::DSStore Perl module (macOS only)
