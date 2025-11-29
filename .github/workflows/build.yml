@@ -26,8 +26,10 @@ jobs:
       - name: Install dependencies
         working-directory: electron-app
         run: |
-          # Try npm ci first, fall back to npm install if lock file is out of sync
-          npm ci || npm install
+          # Use npm install to ensure optional dependencies are included
+          # npm ci sometimes skips optional dependencies like @rollup/rollup-darwin-arm64
+          # This is a known npm bug: https://github.com/npm/cli/issues/4828
+          npm install
       
       - name: Install Mac::Finder::DSStore Perl module (macOS only)
         if: matrix.os == 'macos-latest'
