@@ -150,3 +150,5 @@ print(f"Session ID: {response['sessionId']}")
 - Check that the Bedrock AgentCore service is available in your region
 
 
+
+
