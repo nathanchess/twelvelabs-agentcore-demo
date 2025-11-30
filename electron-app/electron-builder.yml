@@ -42,8 +42,7 @@ mac:
   target:
     - target: dmg
       arch:
-        - x64
-        - arm64  # Apple Silicon support
+        - universal  # Universal binary for both Intel and Apple Silicon Macs
   icon: build/icon.icns
   hardenedRuntime: false  # Disabled - requires code signing
   gatekeeperAssess: false
