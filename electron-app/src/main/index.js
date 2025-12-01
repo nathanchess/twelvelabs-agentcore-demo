@@ -323,6 +323,30 @@ const LAMBDA_STREAMING_URL = process.env.LAMBDA_STREAMING_URL || 'https://qakcm2
 let ffmpegPath = null;
 let ffmpeg = null;
 
+// Helper function to test if an FFmpeg binary actually works (correct architecture)
+function testFFmpegBinary(ffmpegBinaryPath) {
+  try {
+    const { execSync } = require('child_process');
+    // Run ffmpeg -version with a short timeout to test if it works
+    execSync(`"${ffmpegBinaryPath}" -version`, { 
+      timeout: 5000,
+      stdio: 'pipe',
+      encoding: 'utf8'
+    });
+    return true;
+  } catch (error) {
+    // Check for architecture mismatch error
+    if (error.message && error.message.includes('bad CPU type')) {
+      console.log(`  ✗ Wrong architecture for this Mac: ${ffmpegBinaryPath}`);
+    } else if (error.code === 'ENOENT') {
+      console.log(`  ✗ File not found: ${ffmpegBinaryPath}`);
+    } else {
+      console.log(`  ✗ Cannot execute: ${ffmpegBinaryPath} (${error.message})`);
+    }
+    return false;
+  }
+}
+
 function findFFmpegPath() {
   // Try to get the default path from @ffmpeg-installer, but catch errors
   // The module throws if it can't find ffmpeg (common in production builds with ASAR)
@@ -337,22 +361,25 @@ function findFFmpegPath() {
       if (process.platform !== 'win32') {
         try {
           fs.chmodSync(defaultPath, 0o755);
-          console.log('Set execute permissions on FFmpeg');
         } catch (e) {
           console.warn('Could not set execute permissions:', e.message);
         }
       }
-      return defaultPath;
+      // Test if binary actually works (correct architecture)
+      if (testFFmpegBinary(defaultPath)) {
+        console.log('✓ FFmpeg from @ffmpeg-installer works:', defaultPath);
+        return defaultPath;
+      }
     }
-    console.log('Default path is inside ASAR or does not exist, searching manually...');
+    console.log('Default path is inside ASAR, does not exist, or wrong architecture...');
   } catch (requireError) {
     // This is expected in production builds - the module can't find ffmpeg in ASAR
     console.log('Note: @ffmpeg-installer could not auto-detect ffmpeg:', requireError.message);
-    console.log('Searching in app.asar.unpacked locations...');
   }
   
-  // In production builds, FFmpeg must be in app.asar.unpacked
-  // Try multiple possible locations manually
+  console.log('Searching for working FFmpeg binary...');
+  
+  // Build list of possible paths - bundled first, then system
   const possiblePaths = [];
   
   if (process.platform === 'win32') {
@@ -363,35 +390,40 @@ function findFFmpegPath() {
         path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'win32-ia32', 'ffmpeg.exe')
       );
     }
-    // Also try relative to current file location
     possiblePaths.push(
       path.join(__dirname, '..', '..', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'win32-x64', 'ffmpeg.exe'),
       path.join(__dirname, '..', '..', 'node_modules', '@ffmpeg-installer', 'win32-x64', 'ffmpeg.exe')
     );
   } else if (process.platform === 'darwin') {
-    // macOS paths - try BOTH architectures since universal builds may run under Rosetta
-    // When running under Rosetta, process.arch reports 'x64' even on ARM Macs
-    // So we try arm64 FIRST since that's typically what's bundled in universal builds
+    // macOS - try BOTH bundled architectures, then system Homebrew FFmpeg
     const reportedArch = process.arch;
     console.log('macOS detected architecture:', reportedArch);
-    console.log('Will try both darwin-arm64 and darwin-x64 (arm64 first)');
+    
+    // Determine which bundled arch to try first based on reported architecture
+    const primaryArch = reportedArch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
+    const secondaryArch = reportedArch === 'arm64' ? 'darwin-x64' : 'darwin-arm64';
+    console.log(`Will try bundled ${primaryArch} first, then ${secondaryArch}, then system FFmpeg`);
     
     if (process.resourcesPath) {
-      // Try arm64 first (most common for universal builds), then x64
       possiblePaths.push(
-        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'darwin-arm64', 'ffmpeg'),
-        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'darwin-x64', 'ffmpeg')
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', primaryArch, 'ffmpeg'),
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', secondaryArch, 'ffmpeg')
       );
     }
-    // Also try relative to current file location
     possiblePaths.push(
-      path.join(__dirname, '..', '..', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'darwin-arm64', 'ffmpeg'),
-      path.join(__dirname, '..', '..', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'darwin-x64', 'ffmpeg'),
-      path.join(__dirname, '..', '..', 'node_modules', '@ffmpeg-installer', 'darwin-arm64', 'ffmpeg'),
-      path.join(__dirname, '..', '..', 'node_modules', '@ffmpeg-installer', 'darwin-x64', 'ffmpeg')
+      path.join(__dirname, '..', '..', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', primaryArch, 'ffmpeg'),
+      path.join(__dirname, '..', '..', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', secondaryArch, 'ffmpeg'),
+      path.join(__dirname, '..', '..', 'node_modules', '@ffmpeg-installer', primaryArch, 'ffmpeg'),
+      path.join(__dirname, '..', '..', 'node_modules', '@ffmpeg-installer', secondaryArch, 'ffmpeg')
     );
-    // Try system FFmpeg as last resort (Homebrew locations)
-    possiblePaths.push('/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg');
+    // System FFmpeg - try Homebrew locations (works on both Intel and ARM Macs)
+    // Intel Homebrew: /usr/local/bin/ffmpeg
+    // ARM Homebrew: /opt/homebrew/bin/ffmpeg
+    if (reportedArch === 'arm64') {
+      possiblePaths.push('/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg');
+    } else {
+      possiblePaths.push('/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg');
+    }
   } else {
     // Linux paths
     if (process.resourcesPath) {
@@ -406,25 +438,35 @@ function findFFmpegPath() {
     );
   }
   
-  console.log('Searching for FFmpeg in paths:', possiblePaths);
+  console.log('FFmpeg search paths:', possiblePaths);
   
-  // Try each path
-  for (const altPath of possiblePaths) {
-    if (fs.existsSync(altPath)) {
-      console.log('Found FFmpeg at:', altPath);
-      // On Unix systems, ensure execute permissions
-      if (process.platform !== 'win32') {
-        try {
-          fs.chmodSync(altPath, 0o755);
-          console.log('Set execute permissions on FFmpeg');
-        } catch (e) {
-          console.warn('Could not set execute permissions:', e.message);
-        }
+  // Try each path - check existence AND test if binary actually works
+  for (const candidatePath of possiblePaths) {
+    console.log(`Trying: ${candidatePath}`);
+    
+    if (!fs.existsSync(candidatePath)) {
+      console.log('  ✗ Does not exist');
+      continue;
+    }
+    
+    // On Unix systems, ensure execute permissions
+    if (process.platform !== 'win32') {
+      try {
+        fs.chmodSync(candidatePath, 0o755);
+      } catch (e) {
+        console.warn('  Could not set execute permissions:', e.message);
       }
-      return altPath;
+    }
+    
+    // TEST if the binary actually works (correct architecture)
+    if (testFFmpegBinary(candidatePath)) {
+      console.log('✓ Found working FFmpeg at:', candidatePath);
+      return candidatePath;
     }
   }
   
+  console.error('✗ No working FFmpeg found in any location!');
+  console.error('Please install FFmpeg: brew install ffmpeg');
   return null;
 }
 
