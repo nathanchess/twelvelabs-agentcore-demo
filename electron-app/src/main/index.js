@@ -621,12 +621,6 @@ async function _index_video(apiKey, index, filepath) {
 
     form.append('index_id', index.id)
     form.append('video_file', filepath)
-    form.append('video_url', '')
-    form.append('enable_video_stream', true)
-    form.append('user_metadata', JSON.stringify({
-      original_file_name: filepath,
-      source: 'strands-agent',
-    }))
 
     const options = {
       method: 'POST',
