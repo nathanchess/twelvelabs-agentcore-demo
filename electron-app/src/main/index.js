@@ -610,39 +610,60 @@ async function _index_video(apiKey, index, filepath) {
     });
     console.log('✓ TwelveLabs client created');
 
-    // Read file into memory and create Blob - more reliable cross-platform than streams
-    // The SDK accepts: File | fs.ReadStream | Blob
-    // Using Blob avoids stream consumption issues on macOS
+    // Read file into memory for direct API upload
     console.log('Reading video file into memory...');
     const fileBuffer = await fsp.readFile(filepath);
     console.log('✓ File read into memory:', fileBuffer.length, 'bytes');
     
-    // Create Blob from buffer (Node.js 18+ has native Blob support)
+    // Create Blob from buffer for FormData
     const videoBlob = new Blob([fileBuffer], { type: 'video/mp4' });
     console.log('✓ Created Blob for upload:', videoBlob.size, 'bytes');
 
-    console.log('Calling twelvelabsClient.tasks.create...');
-    console.log('This may take a while for large files...');
+    // Use direct API call instead of SDK to avoid timeout issues on macOS
+    // The SDK has internal timeouts that are too short for large file uploads
+    console.log('Uploading video directly to TwelveLabs API...');
+    console.log('This may take several minutes for large files...');
+    
+    const formData = new FormData();
+    formData.append('index_id', index.id);
+    formData.append('video_file', videoBlob, path.basename(filepath));
+    formData.append('enable_video_stream', 'true');
+    
+    const uploadStartTime = Date.now();
+    const uploadResponse = await fetch('https://api.twelvelabs.io/v1.3/tasks', {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey,
+      },
+      body: formData,
+    });
+    const uploadDuration = ((Date.now() - uploadStartTime) / 1000).toFixed(1);
+    
+    if (!uploadResponse.ok) {
+      const errorText = await uploadResponse.text();
+      console.error('TwelveLabs API error response:', errorText);
+      throw new Error(`TwelveLabs upload failed: ${uploadResponse.status} - ${errorText}`);
+    }
+    
+    const uploadResult = await uploadResponse.json();
+    console.log(`✓ Upload complete in ${uploadDuration}s`);
+    console.log('  Task ID:', uploadResult._id);
+    console.log('  Video ID:', uploadResult.video_id);
+    
+    const taskId = uploadResult._id;
 
-    const indexTask = await twelvelabsClient.tasks.create({
-      indexId: index.id,
-      videoFile: videoBlob,
-      enableVideoStream: true,
-    })
+    console.log('Waiting for indexing to complete...');
 
-    console.log('✓ Task created:', indexTask.id);
-    console.log('Waiting for task to complete...');
-
-    const task = await twelvelabsClient.tasks.waitForDone(indexTask.id, {
+    const task = await twelvelabsClient.tasks.waitForDone(taskId, {
       timeout: 3,
       callback: (task) => {
-        console.log('Status:', task.status);
+        console.log('Indexing status:', task.status);
       }
     })
 
-    console.log('✓ Task completed:', task.status);
+    console.log('✓ Indexing completed:', task.status);
 
-    const videoTaskContent = await twelvelabsClient.tasks.retrieve(indexTask.id);
+    const videoTaskContent = await twelvelabsClient.tasks.retrieve(taskId);
 
     if (!videoTaskContent || !videoTaskContent.hls || !videoTaskContent.hls.videoUrl || !videoTaskContent.videoId || !videoTaskContent.indexId || !videoTaskContent.createdAt) {
       throw new Error('Failed to retrieve video task content');
