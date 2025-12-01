@@ -611,38 +611,68 @@ async function _index_video(apiKey, index, filepath) {
     });
     console.log('✓ TwelveLabs client created');
 
-    // Read file into memory for direct API upload
+    // Read file into memory
     console.log('Reading video file into memory...');
     const fileBuffer = await fsp.readFile(filepath);
     console.log('✓ File read into memory:', fileBuffer.length, 'bytes');
+    console.log('  File size:', (fileBuffer.length / (1024 * 1024)).toFixed(2), 'MB');
 
-    // Wait for file stream to be ready
-    const fileStream = fs.createReadStream(filepath);
-
-    // Wait for it to be ready
-    await new Promise((resolve, reject) => {
-      fileStream.on('open', () => {
-        console.log('✓ Stream opened and ready');
-        resolve();
-      });
-      fileStream.on('error', (err) => {
-        console.error('Stream error:', err);
-        reject(err);
-      });
+    // Create File object (Node.js 18.13+ / Electron 33+)
+    // File is more reliable than streams - includes name, type, and all metadata
+    const fileName = path.basename(filepath);
+    console.log('Creating File object...');
+    console.log('  Filename:', fileName);
+    console.log('  MIME type: video/mp4');
+    
+    const videoFile = new File([fileBuffer], fileName, { 
+      type: 'video/mp4',
+      lastModified: Date.now()
     });
+    
+    console.log('✓ File object created');
+    console.log('  File.name:', videoFile.name);
+    console.log('  File.size:', videoFile.size, 'bytes');
+    console.log('  File.type:', videoFile.type);
+
+    // Upload to TwelveLabs using File object
+    console.log('Calling twelvelabsClient.tasks.create with File object...');
+    console.log('This may take several minutes for large files...');
+    const uploadStartTime = Date.now();
 
     const task = await twelvelabsClient.tasks.create({
       indexId: index.id,
-      videoFile: fileStream
-    })
+      videoFile: videoFile
+    });
 
-    console.log('Task created:', task);
+    const uploadDuration = ((Date.now() - uploadStartTime) / 1000).toFixed(1);
+    console.log(`✓ Task created in ${uploadDuration}s`);
+    console.log('  Task ID:', task.id);
 
-    const waitTask = await twelvelabsClient.tasks.waitForDone(task.id);
+    console.log('Waiting for indexing to complete...');
+    const waitTask = await twelvelabsClient.tasks.waitForDone(task.id, {
+      sleepInterval: 5,
+      callback: (t) => {
+        console.log('  Indexing status:', t.status);
+      }
+    });
 
-    console.log('Task completed:', waitTask);
+    console.log('✓ Task completed:', waitTask.status);
 
-    return waitTask.id;
+    // Retrieve full task details to get HLS URL
+    console.log('Retrieving video details...');
+    const videoTaskContent = await twelvelabsClient.tasks.retrieve(task.id);
+    
+    console.log('=== _index_video COMPLETED ===');
+    console.log('  Video ID:', videoTaskContent.videoId);
+    console.log('  Index ID:', videoTaskContent.indexId);
+    console.log('  HLS URL:', videoTaskContent.hls?.videoUrl || 'N/A');
+
+    return {
+      hlsUrl: videoTaskContent.hls?.videoUrl || null,
+      videoId: videoTaskContent.videoId,
+      indexId: videoTaskContent.indexId,
+      createdAt: videoTaskContent.createdAt,
+    };
 
   } catch (error) {
     // Log full error details for debugging
