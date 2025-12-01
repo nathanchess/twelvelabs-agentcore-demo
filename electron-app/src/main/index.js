@@ -1435,35 +1435,58 @@ app.whenReady().then(() => {
         if (!ffmpeg || !ffmpegPath || !fs.existsSync(ffmpegPath)) {
           throw new Error(`FFmpeg not available. Path: ${ffmpegPath || 'null'}. Thumbnail generation requires FFmpeg to be installed.`);
         }
+
+        console.log('Starting FFmpeg process...');
+        console.log('  FFmpeg binary:', ffmpegPath);
+        console.log('  Input file:', filepath);
+        console.log('  Output folder:', output_dir);
+        console.log('  Output filename:', `${videoFileName}.png`);
         
         await new Promise((resolve, reject) => {
-          const ffmpegProcess = ffmpeg(filepath).screenshots({
-            timestamps: ['1'],
-            filename: `${videoFileName}.png`,
-            folder: output_dir,
-          });
-          
-          ffmpegProcess.on('error', (err) => {
-            console.error('✗ FFmpeg error generating thumbnail:', err);
-            console.error('FFmpeg error message:', err.message);
-            console.error('FFmpeg error code:', err.code);
-            console.error('FFmpeg stderr:', err.stderr);
-            reject(err);
-          }).on('end', () => {
-            console.log('✓ FFmpeg thumbnail generation completed');
-            // Small delay to ensure file is written
-            setTimeout(() => {
-              if (fs.existsSync(thumbnailPath)) {
-                console.log('✓ Thumbnail file verified:', thumbnailPath);
-                resolve();
-              } else {
-                console.error('✗ Thumbnail file not found after generation:', thumbnailPath);
-                reject(new Error('Thumbnail file was not created'));
-              }
-            }, 100);
-          }).on('start', (commandLine) => {
-            console.log('FFmpeg command:', commandLine);
-          });
+          try {
+            console.log('Creating ffmpeg command object...');
+            const ffmpegCommand = ffmpeg(filepath);
+            console.log('FFmpeg command object created');
+            
+            ffmpegCommand
+              .on('start', (commandLine) => {
+                console.log('FFmpeg STARTED with command:', commandLine);
+              })
+              .on('progress', (progress) => {
+                console.log('FFmpeg progress:', progress.percent, '%');
+              })
+              .on('error', (err, stdout, stderr) => {
+                console.error('✗ FFmpeg ERROR generating thumbnail:');
+                console.error('  Error:', err.message);
+                console.error('  Stdout:', stdout);
+                console.error('  Stderr:', stderr);
+                reject(err);
+              })
+              .on('end', () => {
+                console.log('✓ FFmpeg END - thumbnail generation completed');
+                // Small delay to ensure file is written
+                setTimeout(() => {
+                  if (fs.existsSync(thumbnailPath)) {
+                    console.log('✓ Thumbnail file verified:', thumbnailPath);
+                    resolve();
+                  } else {
+                    console.error('✗ Thumbnail file not found after generation:', thumbnailPath);
+                    reject(new Error('Thumbnail file was not created'));
+                  }
+                }, 100);
+              })
+              .screenshots({
+                timestamps: ['1'],
+                filename: `${videoFileName}.png`,
+                folder: output_dir,
+              });
+              
+            console.log('Screenshots command issued, waiting for events...');
+          } catch (ffmpegCreateError) {
+            console.error('Error creating FFmpeg process:', ffmpegCreateError);
+            console.error('Stack:', ffmpegCreateError.stack);
+            reject(ffmpegCreateError);
+          }
         });
       } else {
         console.log('✓ Thumbnail already exists:', thumbnailPath);
