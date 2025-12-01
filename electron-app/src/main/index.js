@@ -12,40 +12,122 @@ import crypto from 'crypto';
 import https from 'https';
 import http from 'http';
 
-// Logging setup for production
+// Logging setup for production - GUARANTEED to write logs
 let logFileStream = null;
 let LOG_FILE_PATH = null;
+let logsInitialized = false;
+
+// Synchronous log write - use for critical messages that MUST be saved
+function syncLog(message) {
+  const timestamp = new Date().toISOString();
+  const logLine = `[${timestamp}] ${message}\n`;
+  
+  const fallbackPath = path.join(os.homedir(), 'strands-agent.log');
+  
+  if (LOG_FILE_PATH) {
+    try {
+      fs.appendFileSync(LOG_FILE_PATH, logLine);
+    } catch (e) {
+      // Last resort - write to home directory
+      try {
+        fs.appendFileSync(fallbackPath, logLine);
+      } catch (e2) {
+        // Nothing we can do
+      }
+    }
+  } else {
+    // Logging not initialized yet - write to home directory
+    try {
+      fs.appendFileSync(fallbackPath, logLine);
+    } catch (e) {
+      // Nothing we can do
+    }
+  }
+}
+
+// Catch ALL unhandled errors and log them synchronously
+process.on('uncaughtException', (error) => {
+  syncLog(`[FATAL] Uncaught Exception: ${error.message}\n${error.stack}`);
+  // Don't exit - let the app continue if possible
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  syncLog(`[FATAL] Unhandled Promise Rejection: ${reason}`);
+});
 
 function setupLogging() {
+  // Try multiple locations for logging - ensure we ALWAYS have a log file
+  const possibleLogDirs = [];
+  
+  if (process.platform === 'win32') {
+    // Windows: try Local AppData first, then home directory
+    const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
+    possibleLogDirs.push(
+      path.join(localAppData, 'strands-agent', 'logs'),
+      path.join(os.homedir(), 'strands-agent-logs')
+    );
+  } else {
+    // macOS/Linux - try multiple possible paths
+    try {
+      possibleLogDirs.push(path.join(app.getPath('userData'), 'logs'));
+    } catch (e) {
+      // app might not be ready yet
+    }
+    possibleLogDirs.push(
+      path.join(os.homedir(), 'Library', 'Logs', 'strands-agent'),  // macOS standard logs location
+      path.join(os.homedir(), '.strands-agent', 'logs'),  // Hidden folder in home
+      path.join(os.homedir(), 'strands-agent-logs')  // Visible folder in home as last resort
+    );
+  }
+  
+  // Try each directory until one works
+  let logsDir = null;
+  for (const dir of possibleLogDirs) {
+    try {
+      if (!fs.existsSync(dir)) {
+        fs.mkdirSync(dir, { recursive: true });
+      }
+      // Test write access
+      const testFile = path.join(dir, '.write-test');
+      fs.writeFileSync(testFile, 'test');
+      fs.unlinkSync(testFile);
+      logsDir = dir;
+      break;
+    } catch (e) {
+      // Try next directory
+      continue;
+    }
+  }
+  
+  // Absolute fallback - home directory
+  if (!logsDir) {
+    logsDir = os.homedir();
+  }
+  
+  LOG_FILE_PATH = path.join(logsDir, 'strands-agent.log');
+  
+  // Write startup marker synchronously - GUARANTEED to be written
+  const startupMessage = `\n========== APP STARTED: ${new Date().toISOString()} ==========\n` +
+    `Platform: ${process.platform}\n` +
+    `Arch: ${process.arch}\n` +
+    `Log file: ${LOG_FILE_PATH}\n` +
+    `Node version: ${process.version}\n` +
+    `Electron version: ${process.versions.electron}\n` +
+    `=========================================\n`;
+  
   try {
-    // Use Local AppData instead of Roaming for easier access
-    // Windows: C:\Users\<username>\AppData\Local\strands-agent\logs
-    // macOS: ~/Library/Application Support/strands-agent/logs
-    // Linux: ~/.config/strands-agent/logs
-    let logsDir;
-    if (process.platform === 'win32') {
-      // Use Local AppData on Windows
-      const localAppData = process.env.LOCALAPPDATA || path.join(os.homedir(), 'AppData', 'Local');
-      logsDir = path.join(localAppData, 'strands-agent', 'logs');
-    } else {
-      // Use userData for macOS/Linux
-      logsDir = path.join(app.getPath('userData'), 'logs');
-    }
-    
-    LOG_FILE_PATH = path.join(logsDir, 'strands-agent.log');
-    
-    console.log('Log file will be at:', LOG_FILE_PATH);
-    
-    // Ensure logs directory exists
-    if (!fs.existsSync(logsDir)) {
-      fs.mkdirSync(logsDir, { recursive: true });
-      console.log('Created logs directory:', logsDir);
-    }
-    
-    // Create write stream for log file
+    fs.appendFileSync(LOG_FILE_PATH, startupMessage);
+  } catch (e) {
+    // Try home directory directly
+    LOG_FILE_PATH = path.join(os.homedir(), 'strands-agent.log');
+    fs.appendFileSync(LOG_FILE_PATH, startupMessage);
+  }
+  
+  try {
+    // Create write stream for buffered logging (faster for normal operation)
     logFileStream = fs.createWriteStream(LOG_FILE_PATH, { flags: 'a' });
     
-    // Override console methods to also write to file
+    // Store original console methods
     const originalLog = console.log;
     const originalError = console.error;
     const originalWarn = console.warn;
@@ -57,12 +139,18 @@ function setupLogging() {
       ).join(' ');
       const logLine = `[${timestamp}] [${level}] ${message}\n`;
       
+      // Write to stream (buffered, fast)
       if (logFileStream) {
         logFileStream.write(logLine);
       }
       
-      // Also output to original console
+      // For ERROR level, also write synchronously to guarantee it's saved
       if (level === 'ERROR') {
+        try {
+          fs.appendFileSync(LOG_FILE_PATH, `[${timestamp}] [${level}-SYNC] ${message}\n`);
+        } catch (e) {
+          // Ignore sync write failures - we already have the buffered write
+        }
         originalError(...args);
       } else if (level === 'WARN') {
         originalWarn(...args);
@@ -75,10 +163,10 @@ function setupLogging() {
     console.error = (...args) => writeToFile('ERROR', ...args);
     console.warn = (...args) => writeToFile('WARN', ...args);
     
-    console.log('Logging initialized. Log file:', LOG_FILE_PATH);
+    logsInitialized = true;
+    console.log('Logging initialized successfully at:', LOG_FILE_PATH);
   } catch (error) {
-    // If logging setup fails, continue without file logging
-    console.error('Failed to setup file logging:', error);
+    syncLog(`[ERROR] Failed to setup stream logging: ${error.message}\n${error.stack}`);
   }
 }
 
