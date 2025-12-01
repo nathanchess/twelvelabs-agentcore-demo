@@ -577,6 +577,7 @@ async function _check_index(apiKey) {
 }
 
 async function _index_video(apiKey, index, filepath) {
+  
   try {
     console.log('=== _index_video STARTED ===');
     console.log('Filepath:', filepath);
@@ -615,130 +616,31 @@ async function _index_video(apiKey, index, filepath) {
     const fileBuffer = await fsp.readFile(filepath);
     console.log('✓ File read into memory:', fileBuffer.length, 'bytes');
 
-    // Use Node.js https module directly for reliable file upload
-    // This avoids SDK timeout issues and fetch/FormData quirks on macOS
-    console.log('Uploading video to TwelveLabs API using https...');
-    console.log('This may take several minutes for large files...');
-    
-    const uploadStartTime = Date.now();
-    const fileName = path.basename(filepath);
-    
-    // Create multipart/form-data body manually (like curl does)
-    const boundary = '----WebKitFormBoundary' + crypto.randomBytes(16).toString('hex');
-    
-    // Build the multipart body parts
-    const parts = [];
-    
-    // Part 1: index_id
-    parts.push(Buffer.from(
-      `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="index_id"\r\n\r\n` +
-      `${index.id}\r\n`
-    ));
-    
-    // Part 2: enable_video_stream
-    parts.push(Buffer.from(
-      `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="enable_video_stream"\r\n\r\n` +
-      `true\r\n`
-    ));
-    
-    // Part 3: video_file (the actual file)
-    parts.push(Buffer.from(
-      `--${boundary}\r\n` +
-      `Content-Disposition: form-data; name="video_file"; filename="${fileName}"\r\n` +
-      `Content-Type: video/mp4\r\n\r\n`
-    ));
-    parts.push(fileBuffer);
-    parts.push(Buffer.from(`\r\n`));
-    
-    // End boundary
-    parts.push(Buffer.from(`--${boundary}--\r\n`));
-    
-    // Combine all parts into a single buffer
-    const requestBody = Buffer.concat(parts);
-    console.log('Request body size:', requestBody.length, 'bytes');
-    
-    // Make the HTTPS request
-    const uploadResult = await new Promise((resolve, reject) => {
-      const req = https.request({
-        hostname: 'api.twelvelabs.io',
-        port: 443,
-        path: '/v1.3/tasks',
-        method: 'POST',
-        headers: {
-          'Content-Type': `multipart/form-data; boundary=${boundary}`,
-          'Content-Length': requestBody.length,
-          'x-api-key': apiKey,
-        },
-      }, (res) => {
-        let responseData = '';
-        
-        res.on('data', (chunk) => {
-          responseData += chunk;
-        });
-        
-        res.on('end', () => {
-          const uploadDuration = ((Date.now() - uploadStartTime) / 1000).toFixed(1);
-          console.log(`Response received in ${uploadDuration}s, status: ${res.statusCode}`);
-          
-          if (res.statusCode >= 200 && res.statusCode < 300) {
-            try {
-              const jsonResponse = JSON.parse(responseData);
-              resolve(jsonResponse);
-            } catch (parseError) {
-              reject(new Error(`Failed to parse response: ${responseData}`));
-            }
-          } else {
-            reject(new Error(`TwelveLabs upload failed: ${res.statusCode} - ${responseData}`));
-          }
-        });
-      });
-      
-      req.on('error', (error) => {
-        console.error('HTTPS request error:', error);
-        reject(error);
-      });
-      
-      // Write the body and end the request
-      req.write(requestBody);
-      req.end();
-      
-      console.log('Request sent, waiting for response...');
-    });
-    
-    const totalDuration = ((Date.now() - uploadStartTime) / 1000).toFixed(1);
-    console.log(`✓ Upload complete in ${totalDuration}s`);
-    console.log('  Task ID:', uploadResult._id);
-    console.log('  Video ID:', uploadResult.video_id);
-    
-    const taskId = uploadResult._id;
+    const URL = 'https://api.twelvelabs.io/v1.3/tasks'
+    const form = new FormData();
 
-    console.log('Waiting for indexing to complete...');
+    form.append('index_id', index.id)
+    form.append('video_file', filePath)
+    form.append('video_url', '')
+    form.append('enable_video_stream', true)
+    form.append('user_metadata', JSON.stringify({
+      original_file_name: filepath,
+      source: 'strands-agent',
+    }))
 
-    const task = await twelvelabsClient.tasks.waitForDone(taskId, {
-      timeout: 3,
-      callback: (task) => {
-        console.log('Indexing status:', task.status);
+    const options = {
+      method: 'POST',
+      headers: {
+        'x-api-key': apiKey
       }
-    })
-
-    console.log('✓ Indexing completed:', task.status);
-
-    const videoTaskContent = await twelvelabsClient.tasks.retrieve(taskId);
-
-    if (!videoTaskContent || !videoTaskContent.hls || !videoTaskContent.hls.videoUrl || !videoTaskContent.videoId || !videoTaskContent.indexId || !videoTaskContent.createdAt) {
-      throw new Error('Failed to retrieve video task content');
     }
 
-    console.log('=== _index_video COMPLETED ===');
+    options.body = form;
 
-    return {
-      hlsUrl: videoTaskContent.hls.videoUrl,
-      videoId: videoTaskContent.videoId,
-      indexId: videoTaskContent.indexId,
-      createdAt: videoTaskContent.createdAt,
-    }
+    const response = await fetch(URL, options);
+    const data = await response.json();
+    console.log('Response:', data);
+    return data;
 
   } catch (error) {
     // Log full error details for debugging
