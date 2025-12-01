@@ -324,25 +324,35 @@ let ffmpegPath = null;
 let ffmpeg = null;
 
 function findFFmpegPath() {
-  const defaultPath = require('@ffmpeg-installer/ffmpeg').path;
-  console.log('FFmpeg default path from @ffmpeg-installer:', defaultPath);
-  
-  // Check if default path exists and is executable (not in ASAR)
-  if (fs.existsSync(defaultPath) && !defaultPath.includes('app.asar')) {
-    // On Unix systems, ensure execute permissions
-    if (process.platform !== 'win32') {
-      try {
-        fs.chmodSync(defaultPath, 0o755);
-        console.log('Set execute permissions on FFmpeg');
-      } catch (e) {
-        console.warn('Could not set execute permissions:', e.message);
+  // Try to get the default path from @ffmpeg-installer, but catch errors
+  // The module throws if it can't find ffmpeg (common in production builds with ASAR)
+  let defaultPath = null;
+  try {
+    defaultPath = require('@ffmpeg-installer/ffmpeg').path;
+    console.log('FFmpeg default path from @ffmpeg-installer:', defaultPath);
+    
+    // Check if default path exists and is executable (not in ASAR)
+    if (defaultPath && fs.existsSync(defaultPath) && !defaultPath.includes('app.asar')) {
+      // On Unix systems, ensure execute permissions
+      if (process.platform !== 'win32') {
+        try {
+          fs.chmodSync(defaultPath, 0o755);
+          console.log('Set execute permissions on FFmpeg');
+        } catch (e) {
+          console.warn('Could not set execute permissions:', e.message);
+        }
       }
+      return defaultPath;
     }
-    return defaultPath;
+    console.log('Default path is inside ASAR or does not exist, searching manually...');
+  } catch (requireError) {
+    // This is expected in production builds - the module can't find ffmpeg in ASAR
+    console.log('Note: @ffmpeg-installer could not auto-detect ffmpeg:', requireError.message);
+    console.log('Searching in app.asar.unpacked locations...');
   }
   
   // In production builds, FFmpeg must be in app.asar.unpacked
-  // Try multiple possible locations
+  // Try multiple possible locations manually
   const possiblePaths = [];
   
   if (process.platform === 'win32') {
@@ -558,36 +568,23 @@ async function _index_video(apiKey, index, filepath) {
     });
     console.log('✓ TwelveLabs client created');
 
-    // Use fs.createReadStream for all platforms - this is what TwelveLabs SDK expects
+    // Read file into memory and create Blob - more reliable cross-platform than streams
     // The SDK accepts: File | fs.ReadStream | Blob
-    // Using fs.createReadStream ensures compatibility across all platforms
-    console.log('Creating video file stream with fs.createReadStream...');
-    const videoFileStream = fs.createReadStream(filepath);
+    // Using Blob avoids stream consumption issues on macOS
+    console.log('Reading video file into memory...');
+    const fileBuffer = await fsp.readFile(filepath);
+    console.log('✓ File read into memory:', fileBuffer.length, 'bytes');
     
-    // Wait for stream to be ready before sending to SDK
-    await new Promise((resolve, reject) => {
-      videoFileStream.once('open', () => {
-        console.log('✓ Video file stream opened successfully');
-        resolve();
-      });
-      videoFileStream.once('error', (err) => {
-        console.error('✗ Video file stream error:', err);
-        reject(new Error(`Failed to open video file stream: ${err.message}`));
-      });
-      // Timeout after 30 seconds
-      setTimeout(() => {
-        reject(new Error('Timeout waiting for video file stream to open'));
-      }, 30000);
-    });
-    
-    console.log('✓ Video file stream ready');
+    // Create Blob from buffer (Node.js 18+ has native Blob support)
+    const videoBlob = new Blob([fileBuffer], { type: 'video/mp4' });
+    console.log('✓ Created Blob for upload:', videoBlob.size, 'bytes');
 
     console.log('Calling twelvelabsClient.tasks.create...');
     console.log('This may take a while for large files...');
 
     const indexTask = await twelvelabsClient.tasks.create({
       indexId: index.id,
-      videoFile: videoFileStream,
+      videoFile: videoBlob,
       enableVideoStream: true,
     })
 
