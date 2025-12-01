@@ -17,6 +17,10 @@ asarUnpack:
   - "**/node_modules/@ffmpeg-installer/darwin-x64/**/*"
   - "**/node_modules/@ffmpeg-installer/darwin-arm64/**/*"
   - "**/node_modules/@ffmpeg-installer/linux-x64/**/*"
+
+# Post-pack hook to set execute permissions on macOS binaries (FFmpeg, etc.)
+afterPack: "./scripts/afterPack.js"
+
 win:
   target:
     - target: nsis
