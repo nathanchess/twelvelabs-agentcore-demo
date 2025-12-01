@@ -359,30 +359,29 @@ function findFFmpegPath() {
       path.join(__dirname, '..', '..', 'node_modules', '@ffmpeg-installer', 'win32-x64', 'ffmpeg.exe')
     );
   } else if (process.platform === 'darwin') {
-    // macOS paths - detect architecture for universal builds
-    const arch = process.arch; // 'arm64' for Apple Silicon, 'x64' for Intel
-    const primaryArch = arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
-    const fallbackArch = arch === 'arm64' ? 'darwin-x64' : 'darwin-arm64';
-    
-    console.log('macOS detected architecture:', arch);
-    console.log('Primary FFmpeg arch:', primaryArch);
+    // macOS paths - try BOTH architectures since universal builds may run under Rosetta
+    // When running under Rosetta, process.arch reports 'x64' even on ARM Macs
+    // So we try arm64 FIRST since that's typically what's bundled in universal builds
+    const reportedArch = process.arch;
+    console.log('macOS detected architecture:', reportedArch);
+    console.log('Will try both darwin-arm64 and darwin-x64 (arm64 first)');
     
     if (process.resourcesPath) {
-      // Try primary architecture first
+      // Try arm64 first (most common for universal builds), then x64
       possiblePaths.push(
-        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', primaryArch, 'ffmpeg'),
-        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', fallbackArch, 'ffmpeg')
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'darwin-arm64', 'ffmpeg'),
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'darwin-x64', 'ffmpeg')
       );
     }
-    // Also try relative to current file location (like Windows)
+    // Also try relative to current file location
     possiblePaths.push(
-      path.join(__dirname, '..', '..', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', primaryArch, 'ffmpeg'),
-      path.join(__dirname, '..', '..', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', fallbackArch, 'ffmpeg'),
-      path.join(__dirname, '..', '..', 'node_modules', '@ffmpeg-installer', primaryArch, 'ffmpeg'),
-      path.join(__dirname, '..', '..', 'node_modules', '@ffmpeg-installer', fallbackArch, 'ffmpeg')
+      path.join(__dirname, '..', '..', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'darwin-arm64', 'ffmpeg'),
+      path.join(__dirname, '..', '..', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'darwin-x64', 'ffmpeg'),
+      path.join(__dirname, '..', '..', 'node_modules', '@ffmpeg-installer', 'darwin-arm64', 'ffmpeg'),
+      path.join(__dirname, '..', '..', 'node_modules', '@ffmpeg-installer', 'darwin-x64', 'ffmpeg')
     );
-    // Try system FFmpeg as last resort
-    possiblePaths.push('/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg');
+    // Try system FFmpeg as last resort (Homebrew locations)
+    possiblePaths.push('/opt/homebrew/bin/ffmpeg', '/usr/local/bin/ffmpeg');
   } else {
     // Linux paths
     if (process.resourcesPath) {
@@ -559,26 +558,29 @@ async function _index_video(apiKey, index, filepath) {
     });
     console.log('✓ TwelveLabs client created');
 
-    // For macOS compatibility: read file into buffer first, then create stream from buffer
-    // This avoids potential issues with macOS file stream handling in VMs
-    let videoFileStream;
-    if (process.platform === 'darwin') {
-      console.log('macOS detected - reading file into buffer first for reliability...');
-      const { Readable } = require('stream');
-      const fileBuffer = await fsp.readFile(filepath);
-      console.log('✓ File read into buffer:', fileBuffer.length, 'bytes');
-      
-      // Create a readable stream from the buffer
-      videoFileStream = new Readable();
-      videoFileStream.push(fileBuffer);
-      videoFileStream.push(null);
-      console.log('✓ Created stream from buffer');
-    } else {
-      // Windows/Linux - use regular file stream
-      console.log('Creating video file stream...');
-      videoFileStream = fs.createReadStream(filepath);
-      console.log('✓ Video file stream created');
-    }
+    // Use fs.createReadStream for all platforms - this is what TwelveLabs SDK expects
+    // The SDK accepts: File | fs.ReadStream | Blob
+    // Using fs.createReadStream ensures compatibility across all platforms
+    console.log('Creating video file stream with fs.createReadStream...');
+    const videoFileStream = fs.createReadStream(filepath);
+    
+    // Wait for stream to be ready before sending to SDK
+    await new Promise((resolve, reject) => {
+      videoFileStream.once('open', () => {
+        console.log('✓ Video file stream opened successfully');
+        resolve();
+      });
+      videoFileStream.once('error', (err) => {
+        console.error('✗ Video file stream error:', err);
+        reject(new Error(`Failed to open video file stream: ${err.message}`));
+      });
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        reject(new Error('Timeout waiting for video file stream to open'));
+      }, 30000);
+    });
+    
+    console.log('✓ Video file stream ready');
 
     console.log('Calling twelvelabsClient.tasks.create...');
     console.log('This may take a while for large files...');
