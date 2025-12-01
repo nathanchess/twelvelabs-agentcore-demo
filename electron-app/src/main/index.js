@@ -241,6 +241,15 @@ function findFFmpegPath() {
   
   // Check if default path exists and is executable (not in ASAR)
   if (fs.existsSync(defaultPath) && !defaultPath.includes('app.asar')) {
+    // On Unix systems, ensure execute permissions
+    if (process.platform !== 'win32') {
+      try {
+        fs.chmodSync(defaultPath, 0o755);
+        console.log('Set execute permissions on FFmpeg');
+      } catch (e) {
+        console.warn('Could not set execute permissions:', e.message);
+      }
+    }
     return defaultPath;
   }
   
@@ -262,13 +271,30 @@ function findFFmpegPath() {
       path.join(__dirname, '..', '..', 'node_modules', '@ffmpeg-installer', 'win32-x64', 'ffmpeg.exe')
     );
   } else if (process.platform === 'darwin') {
-    // macOS paths
+    // macOS paths - detect architecture for universal builds
+    const arch = process.arch; // 'arm64' for Apple Silicon, 'x64' for Intel
+    const primaryArch = arch === 'arm64' ? 'darwin-arm64' : 'darwin-x64';
+    const fallbackArch = arch === 'arm64' ? 'darwin-x64' : 'darwin-arm64';
+    
+    console.log('macOS detected architecture:', arch);
+    console.log('Primary FFmpeg arch:', primaryArch);
+    
     if (process.resourcesPath) {
+      // Try primary architecture first
       possiblePaths.push(
-        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'darwin-x64', 'ffmpeg'),
-        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'darwin-arm64', 'ffmpeg')
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', primaryArch, 'ffmpeg'),
+        path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', fallbackArch, 'ffmpeg')
       );
     }
+    // Also try relative to current file location (like Windows)
+    possiblePaths.push(
+      path.join(__dirname, '..', '..', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', primaryArch, 'ffmpeg'),
+      path.join(__dirname, '..', '..', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', fallbackArch, 'ffmpeg'),
+      path.join(__dirname, '..', '..', 'node_modules', '@ffmpeg-installer', primaryArch, 'ffmpeg'),
+      path.join(__dirname, '..', '..', 'node_modules', '@ffmpeg-installer', fallbackArch, 'ffmpeg')
+    );
+    // Try system FFmpeg as last resort
+    possiblePaths.push('/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg');
   } else {
     // Linux paths
     if (process.resourcesPath) {
@@ -276,12 +302,28 @@ function findFFmpegPath() {
         path.join(process.resourcesPath, 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'linux-x64', 'ffmpeg')
       );
     }
+    possiblePaths.push(
+      path.join(__dirname, '..', '..', 'app.asar.unpacked', 'node_modules', '@ffmpeg-installer', 'linux-x64', 'ffmpeg'),
+      path.join(__dirname, '..', '..', 'node_modules', '@ffmpeg-installer', 'linux-x64', 'ffmpeg'),
+      '/usr/bin/ffmpeg'
+    );
   }
+  
+  console.log('Searching for FFmpeg in paths:', possiblePaths);
   
   // Try each path
   for (const altPath of possiblePaths) {
     if (fs.existsSync(altPath)) {
       console.log('Found FFmpeg at:', altPath);
+      // On Unix systems, ensure execute permissions
+      if (process.platform !== 'win32') {
+        try {
+          fs.chmodSync(altPath, 0o755);
+          console.log('Set execute permissions on FFmpeg');
+        } catch (e) {
+          console.warn('Could not set execute permissions:', e.message);
+        }
+      }
       return altPath;
     }
   }
@@ -397,11 +439,61 @@ async function _check_index(apiKey) {
 
 async function _index_video(apiKey, index, filepath) {
   try {
+    console.log('=== _index_video STARTED ===');
+    console.log('Filepath:', filepath);
+    console.log('Platform:', process.platform);
+    console.log('Index ID:', index.id);
+    
+    // Verify file exists
+    if (!fs.existsSync(filepath)) {
+      throw new Error(`Video file does not exist: ${filepath}`);
+    }
+    
+    // Get file stats
+    const fileStats = fs.statSync(filepath);
+    console.log('File size:', (fileStats.size / (1024 * 1024)).toFixed(2), 'MB');
+    
+    if (fileStats.size === 0) {
+      throw new Error('Video file is empty');
+    }
+    
+    // Check file is readable
+    try {
+      fs.accessSync(filepath, fs.constants.R_OK);
+      console.log('✓ File is readable');
+    } catch (accessError) {
+      throw new Error(`Cannot read video file (permission denied?): ${accessError.message}`);
+    }
 
+    console.log('Creating TwelveLabs client...');
     const twelvelabsClient = new TwelveLabs({
       apiKey: apiKey
     });
-    const videoFileStream = fs.createReadStream(filepath);
+    console.log('✓ TwelveLabs client created');
+
+    // For macOS compatibility: read file into buffer first, then create stream from buffer
+    // This avoids potential issues with macOS file stream handling in VMs
+    let videoFileStream;
+    if (process.platform === 'darwin') {
+      console.log('macOS detected - reading file into buffer first for reliability...');
+      const { Readable } = require('stream');
+      const fileBuffer = await fsp.readFile(filepath);
+      console.log('✓ File read into buffer:', fileBuffer.length, 'bytes');
+      
+      // Create a readable stream from the buffer
+      videoFileStream = new Readable();
+      videoFileStream.push(fileBuffer);
+      videoFileStream.push(null);
+      console.log('✓ Created stream from buffer');
+    } else {
+      // Windows/Linux - use regular file stream
+      console.log('Creating video file stream...');
+      videoFileStream = fs.createReadStream(filepath);
+      console.log('✓ Video file stream created');
+    }
+
+    console.log('Calling twelvelabsClient.tasks.create...');
+    console.log('This may take a while for large files...');
 
     const indexTask = await twelvelabsClient.tasks.create({
       indexId: index.id,
@@ -409,18 +501,25 @@ async function _index_video(apiKey, index, filepath) {
       enableVideoStream: true,
     })
 
+    console.log('✓ Task created:', indexTask.id);
+    console.log('Waiting for task to complete...');
+
     const task = await twelvelabsClient.tasks.waitForDone(indexTask.id, {
       timeout: 3,
       callback: (task) => {
-        console.log('Status: ' + task.status);
+        console.log('Status:', task.status);
       }
     })
+
+    console.log('✓ Task completed:', task.status);
 
     const videoTaskContent = await twelvelabsClient.tasks.retrieve(indexTask.id);
 
     if (!videoTaskContent || !videoTaskContent.hls || !videoTaskContent.hls.videoUrl || !videoTaskContent.videoId || !videoTaskContent.indexId || !videoTaskContent.createdAt) {
       throw new Error('Failed to retrieve video task content');
     }
+
+    console.log('=== _index_video COMPLETED ===');
 
     return {
       hlsUrl: videoTaskContent.hls.videoUrl,
@@ -431,9 +530,11 @@ async function _index_video(apiKey, index, filepath) {
 
   } catch (error) {
     // Log full error details for debugging
+    console.error('=== _index_video FAILED ===');
     console.error('Error in _index_video:', {
       message: error?.message,
       name: error?.name,
+      code: error?.code,
       stack: error?.stack,
       error: error
     });
