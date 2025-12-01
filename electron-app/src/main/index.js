@@ -616,9 +616,24 @@ async function _index_video(apiKey, index, filepath) {
     const fileBuffer = await fsp.readFile(filepath);
     console.log('✓ File read into memory:', fileBuffer.length, 'bytes');
 
+    // Wait for file stream to be ready
+    const fileStream = fs.createReadStream(filepath);
+
+    // Wait for it to be ready
+    await new Promise((resolve, reject) => {
+      fileStream.on('open', () => {
+        console.log('✓ Stream opened and ready');
+        resolve();
+      });
+      fileStream.on('error', (err) => {
+        console.error('Stream error:', err);
+        reject(err);
+      });
+    });
+
     const task = await twelvelabsClient.tasks.create({
       indexId: index.id,
-      videoFile: fs.createReadStream(filepath)
+      videoFile: fileStream
     })
 
     console.log('Task created:', task);
