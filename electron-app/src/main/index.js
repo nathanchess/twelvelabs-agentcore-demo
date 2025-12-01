@@ -616,25 +616,18 @@ async function _index_video(apiKey, index, filepath) {
     const fileBuffer = await fsp.readFile(filepath);
     console.log('✓ File read into memory:', fileBuffer.length, 'bytes');
 
-    const URL = 'https://api.twelvelabs.io/v1.3/tasks'
-    const form = new FormData();
+    const task = await twelvelabsClient.tasks.create({
+      indexId: index.id,
+      videoFile: fs.createReadStream(filepath)
+    })
 
-    form.append('index_id', index.id)
-    form.append('video_file', filepath)
+    console.log('Task created:', task);
 
-    const options = {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey
-      }
-    }
+    const waitTask = await twelvelabsClient.tasks.waitForDone(task.id);
 
-    options.body = form;
+    console.log('Task completed:', waitTask);
 
-    const response = await fetch(URL, options);
-    const data = await response.json();
-    console.log('Response:', data);
-    return data;
+    return waitTask.id;
 
   } catch (error) {
     // Log full error details for debugging
