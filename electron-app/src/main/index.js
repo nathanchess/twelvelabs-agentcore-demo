@@ -577,7 +577,7 @@ async function _check_index(apiKey) {
 }
 
 async function _index_video(apiKey, index, filepath) {
-  
+
   try {
     console.log('=== _index_video STARTED ===');
     console.log('Filepath:', filepath);
@@ -620,7 +620,7 @@ async function _index_video(apiKey, index, filepath) {
     const form = new FormData();
 
     form.append('index_id', index.id)
-    form.append('video_file', filePath)
+    form.append('video_file', filepath)
     form.append('video_url', '')
     form.append('enable_video_stream', true)
     form.append('user_metadata', JSON.stringify({
