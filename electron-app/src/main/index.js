@@ -614,39 +614,101 @@ async function _index_video(apiKey, index, filepath) {
     console.log('Reading video file into memory...');
     const fileBuffer = await fsp.readFile(filepath);
     console.log('✓ File read into memory:', fileBuffer.length, 'bytes');
-    
-    // Create Blob from buffer for FormData
-    const videoBlob = new Blob([fileBuffer], { type: 'video/mp4' });
-    console.log('✓ Created Blob for upload:', videoBlob.size, 'bytes');
 
-    // Use direct API call instead of SDK to avoid timeout issues on macOS
-    // The SDK has internal timeouts that are too short for large file uploads
-    console.log('Uploading video directly to TwelveLabs API...');
+    // Use Node.js https module directly for reliable file upload
+    // This avoids SDK timeout issues and fetch/FormData quirks on macOS
+    console.log('Uploading video to TwelveLabs API using https...');
     console.log('This may take several minutes for large files...');
     
-    const formData = new FormData();
-    formData.append('index_id', index.id);
-    formData.append('video_file', videoBlob, path.basename(filepath));
-    formData.append('enable_video_stream', 'true');
-    
     const uploadStartTime = Date.now();
-    const uploadResponse = await fetch('https://api.twelvelabs.io/v1.3/tasks', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-      },
-      body: formData,
+    const fileName = path.basename(filepath);
+    
+    // Create multipart/form-data body manually (like curl does)
+    const boundary = '----WebKitFormBoundary' + crypto.randomBytes(16).toString('hex');
+    
+    // Build the multipart body parts
+    const parts = [];
+    
+    // Part 1: index_id
+    parts.push(Buffer.from(
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="index_id"\r\n\r\n` +
+      `${index.id}\r\n`
+    ));
+    
+    // Part 2: enable_video_stream
+    parts.push(Buffer.from(
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="enable_video_stream"\r\n\r\n` +
+      `true\r\n`
+    ));
+    
+    // Part 3: video_file (the actual file)
+    parts.push(Buffer.from(
+      `--${boundary}\r\n` +
+      `Content-Disposition: form-data; name="video_file"; filename="${fileName}"\r\n` +
+      `Content-Type: video/mp4\r\n\r\n`
+    ));
+    parts.push(fileBuffer);
+    parts.push(Buffer.from(`\r\n`));
+    
+    // End boundary
+    parts.push(Buffer.from(`--${boundary}--\r\n`));
+    
+    // Combine all parts into a single buffer
+    const requestBody = Buffer.concat(parts);
+    console.log('Request body size:', requestBody.length, 'bytes');
+    
+    // Make the HTTPS request
+    const uploadResult = await new Promise((resolve, reject) => {
+      const req = https.request({
+        hostname: 'api.twelvelabs.io',
+        port: 443,
+        path: '/v1.3/tasks',
+        method: 'POST',
+        headers: {
+          'Content-Type': `multipart/form-data; boundary=${boundary}`,
+          'Content-Length': requestBody.length,
+          'x-api-key': apiKey,
+        },
+      }, (res) => {
+        let responseData = '';
+        
+        res.on('data', (chunk) => {
+          responseData += chunk;
+        });
+        
+        res.on('end', () => {
+          const uploadDuration = ((Date.now() - uploadStartTime) / 1000).toFixed(1);
+          console.log(`Response received in ${uploadDuration}s, status: ${res.statusCode}`);
+          
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              const jsonResponse = JSON.parse(responseData);
+              resolve(jsonResponse);
+            } catch (parseError) {
+              reject(new Error(`Failed to parse response: ${responseData}`));
+            }
+          } else {
+            reject(new Error(`TwelveLabs upload failed: ${res.statusCode} - ${responseData}`));
+          }
+        });
+      });
+      
+      req.on('error', (error) => {
+        console.error('HTTPS request error:', error);
+        reject(error);
+      });
+      
+      // Write the body and end the request
+      req.write(requestBody);
+      req.end();
+      
+      console.log('Request sent, waiting for response...');
     });
-    const uploadDuration = ((Date.now() - uploadStartTime) / 1000).toFixed(1);
     
-    if (!uploadResponse.ok) {
-      const errorText = await uploadResponse.text();
-      console.error('TwelveLabs API error response:', errorText);
-      throw new Error(`TwelveLabs upload failed: ${uploadResponse.status} - ${errorText}`);
-    }
-    
-    const uploadResult = await uploadResponse.json();
-    console.log(`✓ Upload complete in ${uploadDuration}s`);
+    const totalDuration = ((Date.now() - uploadStartTime) / 1000).toFixed(1);
+    console.log(`✓ Upload complete in ${totalDuration}s`);
     console.log('  Task ID:', uploadResult._id);
     console.log('  Video ID:', uploadResult.video_id);
     
