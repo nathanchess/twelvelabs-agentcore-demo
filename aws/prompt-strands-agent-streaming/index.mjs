@@ -66,7 +66,7 @@ export const handler = awslambda.streamifyResponse(async (event, responseStream,
 
         const command = new InvokeAgentRuntimeCommand({
             runtimeSessionId: runtimeSessionId,
-            agentRuntimeArn: process.env.AGENT_RUNTIME_ARN || "arn:aws:bedrock-agentcore:us-east-1:551588892732:runtime/agentv2-ygWXvkBdWG",
+            agentRuntimeArn: process.env.AGENT_RUNTIME_ARN || "arn:aws:bedrock-agentcore:us-east-1:<YOUR_ACCOUNT_ID>:runtime/<YOUR_RUNTIME_ID>",
             qualifier: "DEFAULT",
             payload: new TextEncoder().encode(payloadJson)
         });

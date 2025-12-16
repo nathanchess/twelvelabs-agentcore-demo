@@ -16,4 +16,6 @@
 /aws/prompt-strands-agent-streaming/test.sh
 /aws/prompt-strands-agent-streaming/test.bat
 /aws/prompt-strands-agent-streaming/test.exe
-/aws/prompt-strands-agent-streaming/test.py
+/aws/prompt-strands-agent-streaming/test.py'
+
+.bedrock_agentcore.yaml

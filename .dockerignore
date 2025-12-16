@@ -60,20 +60,48 @@ docs/
 
 # Project specific
 tests/
+test/
+test/**
 
 # Electron app (not needed for AgentCore)
-# Exclude entire electron-app directory and all subdirectories
+electron-app
 electron-app/
 electron-app/**
-**/electron-app/**
-**/electron-app/dist/**
-**/electron-app/node_modules/**
-**/electron-app/out/**
+
+# AWS Lambda code (not needed for AgentCore agent)
+aws
+aws/
+aws/**
+
+# Assets/images (not needed for agent)
+assets
+assets/
+assets/**
+
+# Logs and event data
+logs
+logs/
+logs/**
+slack_events
+slack_events/
+slack_events/**
+
+# All node_modules everywhere
+node_modules
+node_modules/
+**/node_modules
+**/node_modules/
+**/node_modules/**
+
+# README and docs
+README.md
+*.md
 
 # Bedrock AgentCore specific - exclude runtime files but keep config
 # Note: .bedrock_agentcore.yaml should NOT be excluded - it's needed for config
 .dockerignore
 .bedrock_agentcore/
+.bedrock_agentcore
 
 # Keep wheelhouse for offline installations
 # wheelhouse/

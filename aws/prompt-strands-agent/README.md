@@ -64,7 +64,7 @@ The Lambda execution role needs:
         "bedrock-agentcore:InvokeAgentRuntime"
       ],
       "Resource": [
-        "arn:aws:bedrock-agentcore:us-east-1:551588892732:runtime/*"
+        "arn:aws:bedrock-agentcore:us-east-1:<YOUR_ACCOUNT_ID>:runtime/*"
       ]
     }
   ]
@@ -113,6 +113,9 @@ Or test with AWS SAM:
 ```bash
 sam local invoke PromptStrandsAgentFunction --event event.json
 ```
+
+
+
 
 
 
