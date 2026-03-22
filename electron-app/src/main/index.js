@@ -2,6 +2,7 @@ import { app, shell, BrowserWindow, ipcMain, protocol, dialog, nativeImage } fro
 import { join } from 'path'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import { TwelveLabs } from 'twelvelabs-js'
+import util from 'util';
 
 import icon from '../../resources/icon.png?asset'
 import fs from 'fs';
@@ -556,7 +557,7 @@ async function _check_index(apiKey) {
       indexName: 'strands-dev',
       models: [
         {
-          modelName: "marengo2.7",
+          modelName: "marengo3.0",
           modelOptions: ["visual", "audio"]
         },
         {
@@ -1270,10 +1271,16 @@ app.whenReady().then(() => {
         apiKey: apiKey
       })
 
-      const videoInfo = await twelveLabsClient.indexes.videos.retrieve(indexId, videoId)
+      const videoInfo = await twelveLabsClient.indexes.videos.retrieve(indexId, videoId, {
+        transcription: true
+      })
 
       if (!videoInfo || !videoInfo.systemMetadata) {
         throw new Error('Failed to retrieve video info');
+      }
+
+      if (!videoInfo.transcription) {
+        throw new Error('Failed to retrieve video transcription');
       }
 
       let transcript = [];
@@ -1288,32 +1295,62 @@ app.whenReady().then(() => {
         })
       }
 
-      const videoSummaryResponse = await twelveLabsClient.summarize({
-        videoId: videoId,
-        type: 'summary',
-      })
-
-      if (!videoSummaryResponse || !videoSummaryResponse.summary) {
-        throw new Error('Failed to retrieve video summary');
+      const summaryResponseFormat = {
+        type: 'json_schema',
+        jsonSchema: {
+          type: 'object',
+          properties: {
+            summary: {
+              type: 'string',
+              description: 'A summary of the video'
+            },
+            chapters: {
+              type: 'array',
+              description: 'A list of chapters in the video',
+              items: {
+                type: 'object',
+                properties: {
+                  title: {
+                    type: 'string',
+                    description: 'The title of the chapter'
+                  },
+                  start: {
+                    type: 'number',
+                    description: 'The start time of the chapter'
+                  },
+                  end: {
+                    type: 'number',
+                    description: 'The end time of the chapter'
+                  }
+                },
+                required: ['title', 'start', 'end']
+              }
+            }
+          },
+          required: ['summary', 'chapters']
+        }
       }
 
-      const videoChapterResponse = await twelveLabsClient.summarize({
+      const videoSummaryResponse = await twelveLabsClient.analyze({
         videoId: videoId,
-        type: 'chapter',
+        prompt: 'Please provide a summary of the video and a detailed breakdown of the video by chapter.',
+        responseFormat: summaryResponseFormat
       })
 
-      if (!videoChapterResponse || !videoChapterResponse.chapters) {
-        throw new Error('Failed to retrieve video chapters');
+      if (!videoSummaryResponse) {
+        throw new Error('Failed to retrieve video summary and chapters');
       }
 
+      const videoJSONResponse = JSON.parse(videoSummaryResponse.data);
+      
       return {
         success: true,
         content: {
           "filename": videoInfo.systemMetadata?.filename,
           "duration": videoInfo.systemMetadata?.duration,
           "transcript": transcript,
-          "summary": videoSummaryResponse.summary,
-          "chapters": videoChapterResponse.chapters
+          "summary": videoJSONResponse.summary,
+          "chapters": videoJSONResponse.chapters
         }
       }
 

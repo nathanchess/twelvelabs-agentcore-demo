@@ -178,12 +178,13 @@ export default function VideoGist({ videoId, indexId }) {
                                 <h3>Transcript</h3>
                             </div>
                             <div className="video-gist-transcript">
-                                {videoGist.transcript.map((item, index) => (
-                                    <div key={index} className="video-gist-transcript-item">
-                                        <span className="video-gist-transcript-time">{formatTime(item.start)}</span>
-                                        <span className="video-gist-transcript-text">{item.text}</span>
+                                {videoGist.transcript.length > 0 && (
+                                    <div className="video-gist-transcript-item">
+                                        <span className="video-gist-transcript-text">
+                                            {videoGist.transcript.map((item) => item.text).join(' ')}
+                                        </span>
                                     </div>
-                                ))}
+                                )}
                             </div>
                         </div>
                     )}
