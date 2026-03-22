@@ -67,7 +67,7 @@ def get_video_index(*args, **kwargs) -> dict:
                 }
         
         index = twelvelabs_client.indexes.create(index_name=index_name, models=[
-            IndexesCreateRequestModelsItem(model_name='marengo2.7', model_options=['visual', 'audio']),
+            IndexesCreateRequestModelsItem(model_name='marengo3.0', model_options=['visual', 'audio']),
             IndexesCreateRequestModelsItem(model_name='pegasus1.2', model_options=['visual', 'audio']),
         ])
 

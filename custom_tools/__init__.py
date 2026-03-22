@@ -4,6 +4,7 @@ from . import get_slack_channel_ids
 from . import get_video_index
 from . import slack
 from . import fetch_video_url
+from . import compliance_checklist
 
 __all__ = [
     'chat_video',
@@ -12,5 +13,6 @@ __all__ = [
     'get_video_index',
     'slack',
     'fetch_video_url',
+    'compliance_checklist',
 ]
 
